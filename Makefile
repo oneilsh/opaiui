@@ -10,4 +10,4 @@ install:
 
 test:
 	@echo "\n\n"
-	@uv run python test.py
+	@uv run streamlit run scholar_app.py

@@ -1,17 +1,21 @@
 [project]
 name = "opaiui"
-version = "0.1.0"
+version = "0.8.0"
 description = "Add your description here"
 readme = "README.md"
 authors = [
     { name = "Shawn T O'Neil", email = "oneilsh@gmail.com" }
 ]
-requires-python = ">=3.13"
+requires-python = ">=3.13,<4.0"
 dependencies = [
     "pydantic-ai>=0.4.0",
     "python-dotenv>=1.1.1",
     "streamlit>=1.46.1",
     "upstash-redis>=1.4.0",
+    "nest-asyncio (>=1.6.0,<2.0.0)",
+    "bs4 (>=0.0.2,<0.0.3)",
+    "dill (>=0.4.0,<0.5.0)",
+    "semanticscholar (>=0.10.0,<0.11.0)",
 ]
 
 [build-system]
