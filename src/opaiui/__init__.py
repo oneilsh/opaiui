@@ -64,7 +64,6 @@ class AgentConfig(BaseModel):
     agent: Any = Field(default=None, exclude=True, description="The Pydantic.AI Agent instance this config is for.", )
     deps: Any = Field(default=None, exclude=True, description="Dependencies for the agent, to be provided to agent.iter() during a run.")
 
-    description: Optional[str] = Field(default=None, description="A brief description for the agent shown in the sidebar.")
     greeting: str = Field(default="Hello! How can I assist you today?", description="Greeting message shown in the chat. Appears as a message from the agent, but is not included in the agent's history.")
     agent_avatar: str = Field(default="🤖", description="Avatar to display for the agent in the chat. Can be an emoji or a URL to an image.")
 
