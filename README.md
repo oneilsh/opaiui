@@ -11,9 +11,11 @@ for [Pydantic.AI](https://ai.pydantic.dev/) agents. The following features are s
 - 🖥️ In-chat rendering of streamlit components via agent tool call
 - ℹ️ Toggleable full message context
 
+A demo repo is available at [https://github.com/oneilsh/opaiui-demo](https://github.com/oneilsh/opaiui-demo), with live deployment at [https://opaiui-demo.streamlit.app/](https://opaiui-demo.streamlit.app/).
+
 <br />
 <p align="center">
-  <img src="assets/screenshot.png" width="70%" alt="Screenshot">
+  <a href="https://opaiui-demo.streamlit.app"><img src="assets/screenshot.png" width="90%" alt="Screenshot"></a>
 </p>
 
 *Known limitations:*
@@ -34,18 +36,19 @@ pip install opaiui
 
 An opaiui application consists of:
 
+1. An `AppConfig`, specifying:
+   1. A set of Streamlit-based rendering functions, which an AI agent may execute to display widgets in the chat
+   1. Other page metadata, such as tab title and icon
 1. A dictionary of `AgentConfig` objects, keyed by agent name, each specifying:
    1. A Pydantic.AI [agent](https://ai.pydantic.dev/agents/), with or without tools (including MCP)
    1. A `deps` object to use with the agent, as described by [Pydantic.AI](https://ai.pydantic.dev/dependencies/). The `deps`
    may also be used to store agent state across messages
    1. A sidebar function for agent-specific sidebar rendering (which may read state from `deps`)
    1. Other agent metadata, such as avatar and initial greeting
-1. An `AppConfig`, specifying:
-   1. A set of Streamlit-based rendering functions, which an agent may execute to display widgets in the chat
-   1. Other page metadata, such as tab title and icon
+
 
 <p align="center">
-  <img src="assets/architecture.png" width="85%" alt="Screenshot">
+  <img src="assets/architecture.png" width="85%" alt="Architecture">
 </p>
 
 ### Basic Application
@@ -137,6 +140,10 @@ streamlit run main_app.py
 Sessions and chats are sharable, backed by [Upstash](https://upstash.com/) serverless storage. To enable, simply create
 a Redis database on Upstash, and add `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` to your `.env` or environment variable cloud config.
 
+<p align="center">
+  <img src="assets/share_screenshot.png" width="50%" alt="Sharing screenshot">
+</p>
+
 Sessions are saved for 30 days by default; this is configurable with `share_chat_ttl_seconds` in `AppConfig`, and
 visiting a shared session URL will reset the timer.
 
@@ -185,7 +192,7 @@ async def count_library(ctx: RunContext[Library]):
 
 Now, our `library_agent` can choose to call its `add_to_library` tool, providing a string to store in the library, or get a count of library items with `count_library`.
 
-We define a new sidebar function to rendering the library contents, as well as a button to clear it. As before,
+We define a new sidebar function to render the library contents, as well as a button to clear it. As before,
 this function must be `async` and take the `deps` parameter:
 
 ```python
@@ -205,6 +212,8 @@ async def library_sidebar(deps):
 
 This `clear_library` function and button are a bit advanced, but highlight the flexibility allowed by incorporating Streamlit
 components. The call to `st.rerun()` forces the UI to re-render after the button executes, updating the sidebar display.
+
+**Note:** The "Clear Chat" button clears out the chat history and usage, but does *not* clear the agent's state.
 
 To make use of these, we need to create a `deps` as a new library object for the `AgentConfig`:
 
@@ -271,6 +280,11 @@ prior to the agents' response, or a dataframe with the library contents after th
 the agent does not 'see' the rendered result as part of its view of the chat history; return values may be used to provide
 relevant information or data to the agent. In the current implementation, the rendering is not visible in the chat until
 the agent has completed responding.
+
+<p align="center">
+  <img src="assets/widget_render.png" width="85%" alt="Widget Rendering">
+</p>
+
 
 ## Changelog
 
