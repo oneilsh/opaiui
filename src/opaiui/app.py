@@ -1,7 +1,6 @@
 import streamlit as st
 import logging
 import asyncio
-import nest_asyncio
 from opaiui import AppConfig, AgentConfig, DisplayMessage
 from pydantic_ai.usage import Usage
 from pydantic_ai import Agent
@@ -9,6 +8,8 @@ from upstash_redis import Redis
 from typing import Dict
 import os
 import json
+from typing import Any, Callable, List, Optional
+from opaiui import AgentConfig, AppConfig, AgentState
 
 import dill
 import hashlib
@@ -34,48 +35,7 @@ from pydantic_ai.messages import (
     RetryPromptPart,
 )
 
-nest_asyncio.apply()
 
-
-
-def serve(config: AppConfig, agent_configs: Dict[str, AgentConfig]):
-    """Serve the app with the given configuration."""
-
-    if "app_config" not in st.session_state:
-        st.session_state.app_config = config
-        st.session_state.agent_configs = agent_configs
-
-        # editable by widgets
-        st.session_state.current_agent_name = list(agent_configs.keys())[0]  # Default to the first agent
-        st.session_state.show_function_calls = config.show_function_calls
-
-        if "logger" not in st.session_state:
-            st.session_state.logger = logging.getLogger(__name__)
-            st.session_state.logger.handlers = []
-            st.session_state.logger.setLevel(logging.INFO)
-            st.session_state.logger.addHandler(logging.StreamHandler())
-
-        st.session_state.lock_widgets = False
-        st.session_state.setdefault("event_loop", asyncio.new_event_loop())
-
-        sidebar_state = "auto"
-        if config.sidebar_collapsed is not None:
-            sidebar_state = "collapsed" if config.sidebar_collapsed else "expanded"
-
-
-        page_settings = {
-            "page_title": config.page_title,
-            "page_icon": config.page_icon,
-            "layout": "centered",
-            "initial_sidebar_state": sidebar_state,
-            "menu_items": config.menu_items,
-        }
-
-        st.set_page_config(**page_settings)
-
-
-    loop = st.session_state.get("event_loop")
-    loop.run_until_complete(_main())
 
 
 def _current_agent_config():
@@ -98,7 +58,7 @@ async def _render_sidebar():
         current_config = _current_agent_config()
         if hasattr(current_config, "sidebar_func") and callable(current_config.sidebar_func):
             deps = current_config.deps
-            current_config.sidebar_func(deps)
+            await current_config.sidebar_func(deps)
 
         st.markdown("#")
         st.markdown("#")
@@ -116,7 +76,7 @@ async def _render_sidebar():
                 st.session_state.logger.info(f"Shared chats DB size: {dbsize}")
 
             except Exception as e:
-                st.session_state.logger.error(f"Error connecting to database, or no database to connect to. Error:\n{e}")
+                await _log_error(f"Error connecting to database, or no database to connect to. Error:\n{e}")
 
         if dbsize is not None:
             col1, col2 = st.columns(2)
@@ -265,29 +225,59 @@ async def _process_input(prompt):
 
         result = run.result
         
+        if not result:
+            current_display_messages.append(DisplayMessage(ModelResponse(parts=[TextPart(content="No response from agent. Something went wrong. Please try again later.")])))
+
         if result:
             messages = result.new_messages()
+
+            # all the messages need to go into the current history used internally by the agent
             current_history.extend(messages)
 
-            for message in messages:
-                dmessage = DisplayMessage(model_message=message)
+            # convert result messages to DisplayMessages
+            messages = [DisplayMessage(model_message=message) for message in messages]
+
+            before_agent_delayed_messages = [dmessage for dmessage in current_agent_config._delayed_messages if dmessage.before_agent_response]
+            after_agent_delayed_messages = [dmessage for dmessage in current_agent_config._delayed_messages if not dmessage.before_agent_response]
+
+            # before_agent_delayed_messages need to be inserted into the result messages after the first UserPromptPart
+            if before_agent_delayed_messages:
+                for i, dmessage in enumerate(messages):
+                    if isinstance(dmessage.model_message, ModelRequest) and any(isinstance(part, UserPromptPart) for part in dmessage.model_message.parts):
+                        # slice replacement syntax is weird...
+                        messages[i:i+1] = messages[i:i+1] + before_agent_delayed_messages
+                        break
+            
+            current_display_messages.extend(messages)
+
+            # now we can add the delayed messages that should be after the agent's response
+            for dmessage in after_agent_delayed_messages:
                 current_display_messages.append(dmessage)
 
-    # TODO define and call render_delayed_messages()
+            # clear the delayed messages
+            current_agent_config._delayed_messages = []
 
-    # def render_messages():
-    #     with st.expander("Full context", expanded=False):
-    #         all_json = [message.model_dump() for message in current_display_messages]
-    #         st.write(all_json)
+
 
     st.session_state.lock_widgets = False  # Step 5: Unlock the UI   
     st.rerun()
 
 
-def _render_message(dmessage: DisplayMessage):
+
+async def call_render_func(render_func_name: str, render_args: dict, before_agent_response: bool = False):
+    """Adds a DisplayMessage with a render function to the current agent's display messages."""
+    current_agent_config = _current_agent_config()
+    if render_func_name in st.session_state.render_funcs:
+        dmessage = DisplayMessage(render_func=render_func_name, render_args=render_args, before_agent_response=before_agent_response)
+        current_agent_config._delayed_messages.append(dmessage)
+    else:
+        await _log_error(f"Render function {render_func_name} not found in session state. Please check the render_funcs dictionary.")
+
+
+async def _render_message(dmessage: DisplayMessage):
     """Render a message in the Streamlit chat."""
     if not isinstance(dmessage, DisplayMessage):
-        st.session_state.logger.error(f"Expected DisplayMessage, got {type(dmessage)}")
+        await _log_error(f"Expected DisplayMessage in _render_message(), got {type(dmessage)}")
         return
     
     if dmessage.model_message:
@@ -326,7 +316,32 @@ def _render_message(dmessage: DisplayMessage):
         if st.session_state.show_function_calls:
             with st.expander(f"{str(message.parts[0])[:100] + '...'}", expanded=False):
                 st.write(message.parts)
+    else:
+        # this is a DisplayMessage with no model_message, so it must be a custom render function
+        if dmessage.render_func and dmessage.render_func in st.session_state.render_funcs:
+            render_func = st.session_state.render_funcs[dmessage.render_func]
+            if callable(render_func):
+                try:
+                    render_args = dmessage.render_args or {}
+                    await render_func(**render_args)
+                except Exception as e:
+                    await _log_error(f"Error calling render function {dmessage.render_func}: {e}")
+            else:
+                await _log_error(f"Render function {dmessage.render_func} is not callable.")
+        else:
+            await _log_error(f"DisplayMessage has no model_message and no valid render function: {dmessage}")
 
+
+async def _log_error(error_message: str):
+    """Render an error message in the Streamlit chat."""
+    st.session_state.logger.error(error_message)
+    if "show_modal_error_messages" in st.session_state.app_config and st.session_state.app_config.show_modal_error_messages:
+        @st.dialog("Error")
+        def error_dialog():
+            st.markdown(error_message, unsafe_allow_html=True)
+            st.divider()
+            st.markdown("This error has been logged. Please contact the developer if it persists, with steps to reproduce the issue.")
+        error_dialog()
 
 
 async def _handle_chat_input():
@@ -336,7 +351,7 @@ async def _handle_chat_input():
 
 
 
-def _share_session():
+async def _share_session():
     try:
         # most of the appconfig is not changeable, so no need to serialize it
         # we will keep some of the dynamic state info that is stored in st.session_state
@@ -370,8 +385,7 @@ def _share_session():
         share_dialog()
 
     except Exception as e:
-        st.warning('Error saving chat.', icon="⚠️")
-        st.session_state.logger.error(f"Error saving chat. Traceback: {traceback.format_exc()}")
+        await _log_error(f"Error saving chat: {e}")
 
 
 
@@ -394,7 +408,7 @@ def _rehydrate_state():
 
 
     st.session_state.show_function_calls = state_data["show_function_calls"]
-    st.session_state.app_config.sidebar_collapsed = state_data["sidebar_collapsed"]
+    st.session_state.app_config.sidebar_collapsed = state_data["sidebar_collapsed"] # this isn't actually respected by Streamlit...
     st.session_state.current_agent_name = state_data["current_agent_name"]
 
     # load the agent configs from the state data
@@ -427,6 +441,54 @@ async def _main():
         st.write(current_config.greeting, unsafe_allow_html=True)
 
     for message in current_config._display_messages:
-        _render_message(message)
+        await _render_message(message)
 
     await _handle_chat_input()
+
+
+
+
+
+def serve(config: AppConfig, agent_configs: Dict[str, AgentConfig]) -> None:
+    """Serve the app with the given configuration."""
+
+    if "app_config" not in st.session_state:
+        st.session_state.app_config = config
+        st.session_state.agent_configs = agent_configs
+        if config.rendering_functions is not None:
+            # store the render functions in session state for easy access
+            st.session_state.render_funcs = {func.__name__: func for func in config.rendering_functions}
+        else:
+            st.session_state.render_funcs = {}
+
+        # editable by widgets
+        st.session_state.current_agent_name = list(agent_configs.keys())[0]  # Default to the first agent
+        st.session_state.show_function_calls = config.show_function_calls
+
+        if "logger" not in st.session_state:
+            st.session_state.logger = logging.getLogger(__name__)
+            st.session_state.logger.handlers = []
+            st.session_state.logger.setLevel(logging.INFO)
+            st.session_state.logger.addHandler(logging.StreamHandler())
+
+        st.session_state.lock_widgets = False
+        st.session_state.setdefault("event_loop", asyncio.new_event_loop())
+
+        sidebar_state = "auto"
+        if config.sidebar_collapsed is not None:
+            sidebar_state = "collapsed" if config.sidebar_collapsed else "expanded"
+
+
+        page_settings = {
+            "page_title": config.page_title,
+            "page_icon": config.page_icon,
+            "layout": "centered",
+            "initial_sidebar_state": sidebar_state,
+            "menu_items": config.menu_items,
+        }
+
+        st.set_page_config(**page_settings)
+
+
+    loop = st.session_state.get("event_loop")
+    loop.run_until_complete(_main())

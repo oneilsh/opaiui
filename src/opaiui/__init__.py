@@ -1,4 +1,5 @@
 import dill, base64
+import inspect
 from typing import Any, Callable, Optional, List, Dict
 from pydantic import field_validator, PrivateAttr, BaseModel, Field, ConfigDict
 from pydantic_ai.messages import ModelMessage
@@ -6,12 +7,14 @@ from pydantic_ai.usage import Usage
 
 
 from pydantic import BaseModel, Field, field_validator
+import nest_asyncio
+
+nest_asyncio.apply()
 
 
 ALLOWED_MENU_KEYS = ["Get Help", "Report a Bug", "About"]
 
 class AppConfig(BaseModel):
-    show_function_calls: bool = Field(default=False, description="Whether to show function calls in the UI.")
     page_title: str = Field(default="Pydantic.AI UI", description="The title of the web page.")
     page_icon: str = Field(default="🤖", description="The icon to display in the browser tab.")
     user_avatar: str = Field(default="👤", description="The avatar to display for the user.")
@@ -22,7 +25,14 @@ class AppConfig(BaseModel):
             "Report a Bug": None,
             "About": None,
         })
+
     share_chat_ttl_seconds: int = Field(default=(60 * 60 * 24) * 30, description="Time to live for shared chat sessions in seconds. Default is 30 days.")
+    show_modal_error_messages: bool = Field(default=True, description="Whether to show error messages in a modal dialog. If False, errors will be logged but not displayed to the user.")
+    show_function_calls: bool = Field(default=False, description="Whether to show function calls in the UI.")
+
+    rendering_functions: List[Callable[[Any], None]] = Field(
+        default_factory=list,
+    )
 
     @field_validator("menu_items", mode="after")
     @classmethod
@@ -32,11 +42,18 @@ class AppConfig(BaseModel):
             raise ValueError(f"Invalid page menu keys: {extra_keys}. Only {ALLOWED_MENU_KEYS} are allowed.")
         return v
 
+    @field_validator("rendering_functions", mode="before")
+    @classmethod
+    def validate_rendering_functions(cls, v):
+        if not all(inspect.iscoroutinefunction(func) for func in v):
+            raise ValueError("All rendering functions must be async functions (defined with async def).")
+        return v
 
 class DisplayMessage(BaseModel):
     model_message: Optional[ModelMessage] = None
     render_func: Optional[str] = None
     render_args: Dict[str, Any] = Field(default_factory=dict)
+    before_agent_response: bool = Field(default=True, description="If True, this message will be rendered before the agent's response is displayed (immediately after the user message). If False, it will be rendered immediately after.")
 
 
 class AgentState(BaseModel):
@@ -44,20 +61,19 @@ class AgentState(BaseModel):
 
 
 class AgentConfig(BaseModel):
-    # --- Runtime (not serializable) fields
     agent: Any = Field(default=None, exclude=True, description="The Pydantic.AI Agent instance this config is for.", )
     deps: Any = Field(default=None, exclude=True, description="Dependencies for the agent, to be provided to agent.iter() during a run.")
-    sidebar_func: Optional[Callable[[Any], None]] = Field(default=None, exclude=True, description="Function to render the agent's sidebar components using Streamlit functions. Takes the agent's dependencies as an argument for stateful information.")
 
-    # --- User-visible serializable fields
     description: Optional[str] = Field(default=None, description="A brief description for the agent shown in the sidebar.")
     greeting: str = Field(default="Hello! How can I assist you today?", description="Greeting message shown in the chat. Appears as a message from the agent, but is not included in the agent's history.")
     agent_avatar: str = Field(default="🤖", description="Avatar to display for the agent in the chat. Can be an emoji or a URL to an image.")
 
-    # --- Internal-use serializable fields
+    sidebar_func: Optional[Callable[[Any], None]] = Field(default=None, exclude=True, description="Function to render the agent's sidebar components using Streamlit functions. Takes the agent's dependencies as an argument for stateful information.")
+
     _usage: Usage = PrivateAttr(default_factory=Usage)
     _history_messages: List[ModelMessage] = PrivateAttr(default_factory=list)
     _display_messages: List[DisplayMessage] = PrivateAttr(default_factory=list)
+    _delayed_messages: List[DisplayMessage] = PrivateAttr(default_factory=list) # private attribute as temporary holding for rendering messages; they will be moved to _display_messages when the agent finishes running
 
 
     model_config = ConfigDict(
