@@ -13,21 +13,25 @@ for [Pydantic.AI](https://ai.pydantic.dev/) agents. The following features are s
 
 ## Installation
 
-<todo>
+Via pip/poetry/whatever:
+
+```bash
+pip install opaiui
+```
 
 ## Usage
 
 An opaiui application consists of:
 
 1. A list of `AgentConfig` objects, each specifying:
-  1. Basic agent metadata, such as avatar and initial greeting
-  1. A Pydantic.AI [agent](https://ai.pydantic.dev/agents/), with or without tools (including MCP)
-  1. A `deps` object to use with the agent, as described by [Pydantic.AI](https://ai.pydantic.dev/dependencies/). The `deps` may also be used to store agent state
-  1. A sidebar function for agent-specific sidebar rendering
-
+   1. Basic agent metadata, such as avatar and initial greeting
+   1. A Pydantic.AI [agent](https://ai.pydantic.dev/agents/), with or without tools (including MCP)
+   1. A `deps` object to use with the agent, as described by [Pydantic.AI](https://ai.pydantic.dev/dependencies/). The `deps`
+   may also be used to store agent state
+   1. A sidebar function for agent-specific sidebar rendering
 1. An `AppConfig`, specifying:
-  1. Global page metadata, such as tab title and icon
-  1. A set of Streamlit-based rendering functions, which an agent may execute to display widgets
+   1. Global page metadata, such as tab title and icon
+   1. A set of Streamlit-based rendering functions, which an agent may execute to display widgets
 
 ### Basic Application
 
