@@ -18,6 +18,16 @@ dependencies = [
     "dill (>=0.4.0,<0.5.0)"
 ]
 
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/oneilsh/opaiui"
+"Bug Tracker" = "https://github.com/oneilsh/opaiui/issues"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
