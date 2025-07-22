@@ -126,3 +126,12 @@ class AgentConfig(BaseModel):
         obj._display_messages = display_messages
         return obj
 
+    # sidebar_func must be a callable and async (coroutine)
+    @field_validator("sidebar_func", mode="before")
+    @classmethod
+    def validate_sidebar_func(cls, v):
+        if not callable(v):
+            raise ValueError("sidebar_func must be a callable")
+        if not inspect.iscoroutinefunction(v):
+            raise ValueError("sidebar_func must be an async function")
+        return v
