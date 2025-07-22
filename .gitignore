@@ -5,6 +5,8 @@ build/
 dist/
 wheels/
 *.egg-info
+poetry.lock
+uv.lock
 
 # Virtual environments
 .venv
