@@ -76,7 +76,7 @@ async def _render_sidebar():
                 st.session_state.logger.info(f"Shared chats DB size: {dbsize}")
 
             except Exception as e:
-                await _log_error(f"Error connecting to database, or no database to connect to. Error:\n{e}")
+                _log_error(f"Error connecting to database, or no database to connect to. Error:\n{e}")
 
         if dbsize is not None:
             col1, col2 = st.columns(2)
@@ -271,13 +271,13 @@ async def call_render_func(render_func_name: str, render_args: dict, before_agen
         dmessage = DisplayMessage(render_func=render_func_name, render_args=render_args, before_agent_response=before_agent_response)
         current_agent_config._delayed_messages.append(dmessage)
     else:
-        await _log_error(f"Render function {render_func_name} not found in session state. Please check the render_funcs dictionary.")
+        _log_error(f"Render function {render_func_name} not found in session state. Please check the render_funcs dictionary.")
 
 
 async def _render_message(dmessage: DisplayMessage):
     """Render a message in the Streamlit chat."""
     if not isinstance(dmessage, DisplayMessage):
-        await _log_error(f"Expected DisplayMessage in _render_message(), got {type(dmessage)}")
+        _log_error(f"Expected DisplayMessage in _render_message(), got {type(dmessage)}")
         return
     
     if dmessage.model_message:
@@ -325,14 +325,14 @@ async def _render_message(dmessage: DisplayMessage):
                     render_args = dmessage.render_args or {}
                     await render_func(**render_args)
                 except Exception as e:
-                    await _log_error(f"Error calling render function {dmessage.render_func}: {e}")
+                    _log_error(f"Error calling render function {dmessage.render_func}: {e}")
             else:
-                await _log_error(f"Render function {dmessage.render_func} is not callable.")
+                _log_error(f"Render function {dmessage.render_func} is not callable.")
         else:
-            await _log_error(f"DisplayMessage has no model_message and no valid render function: {dmessage}")
+            _log_error(f"DisplayMessage has no model_message and no valid render function: {dmessage}")
 
 
-async def _log_error(error_message: str):
+def _log_error(error_message: str):
     """Render an error message in the Streamlit chat."""
     st.session_state.logger.error(error_message)
     if "show_modal_error_messages" in st.session_state.app_config and st.session_state.app_config.show_modal_error_messages:
@@ -351,7 +351,7 @@ async def _handle_chat_input():
 
 
 
-async def _share_session():
+def _share_session():
     try:
         # most of the appconfig is not changeable, so no need to serialize it
         # we will keep some of the dynamic state info that is stored in st.session_state
@@ -385,7 +385,7 @@ async def _share_session():
         share_dialog()
 
     except Exception as e:
-        await _log_error(f"Error saving chat: {e}")
+        _log_error(f"Error saving chat: {e}")
 
 
 
