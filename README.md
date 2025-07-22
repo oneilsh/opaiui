@@ -274,4 +274,4 @@ the agent has completed responding.
 
 ## Changelog
 
-- 0.8.0: First public release
+- 0.8.1: First public release
