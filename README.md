@@ -285,7 +285,20 @@ the agent has completed responding.
   <img src="assets/widget_render.png" width="85%" alt="Widget Rendering">
 </p>
 
+### Logging
+
+Logging is handled as part of the streamlit session; the default logging level is set to `"INFO"`. You can access the logger
+via the app's `get_logger()` function.
+
+```python
+from opaiui.app import get_logger
+
+logger = get_logger()
+logger.info("Hello from opaiui")
+```
+
 
 ## Changelog
 
+- 0.9.1: Added `get_logger()`
 - 0.8.1: First public release
