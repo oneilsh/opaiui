@@ -446,7 +446,19 @@ async def _main():
     await _handle_chat_input()
 
 
+def _initialize_logger():
+    """Initialize the logger for the app."""
+    if "logger" not in st.session_state:
+        st.session_state.logger = logging.getLogger(__name__)
+        st.session_state.logger.handlers = []
+        st.session_state.logger.setLevel(logging.INFO)
+        st.session_state.logger.addHandler(logging.StreamHandler())
 
+def get_logger():
+    """Get the logger for the app."""
+    if "logger" not in st.session_state:
+        _initialize_logger()
+    return st.session_state.logger
 
 
 def serve(config: AppConfig, agent_configs: Dict[str, AgentConfig]) -> None:
@@ -466,10 +478,7 @@ def serve(config: AppConfig, agent_configs: Dict[str, AgentConfig]) -> None:
         st.session_state.show_function_calls = config.show_function_calls
 
         if "logger" not in st.session_state:
-            st.session_state.logger = logging.getLogger(__name__)
-            st.session_state.logger.handlers = []
-            st.session_state.logger.setLevel(logging.INFO)
-            st.session_state.logger.addHandler(logging.StreamHandler())
+            _initialize_logger()
 
         st.session_state.lock_widgets = False
         st.session_state.setdefault("event_loop", asyncio.new_event_loop())
