@@ -300,5 +300,6 @@ logger.info("Hello from opaiui")
 
 ## Changelog
 
+- 0.10.0: Relaxed python dep to >=3.10
 - 0.9.1: Added `get_logger()`
 - 0.8.1: First public release
