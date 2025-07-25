@@ -68,17 +68,18 @@ async def _render_sidebar():
         st.caption(f"Input tokens: {current_config._usage.request_tokens or 0} Output tokens: {current_config._usage.response_tokens or 0}")
 
             
-        dbsize = None
-        if "UPSTASH_REDIS_REST_URL" in os.environ and "UPSTASH_REDIS_REST_TOKEN" in os.environ:
+        if "UPSTASH_REDIS_REST_URL" in os.environ and "UPSTASH_REDIS_REST_TOKEN" in os.environ and "upstash_active" not in st.session_state:
             try:
                 redis = Redis.from_env()
                 dbsize = redis.dbsize()
-                st.session_state.logger.info(f"Shared chats DB size: {dbsize}")
+                st.session_state.logger.info(f"Initializing session with sharing enabled. Shared chats DB size: {dbsize}")
+                redis.close()
+                st.session_state["upstash_active"] = True
 
             except Exception as e:
-                _log_error(f"Error connecting to database, or no database to connect to. Error:\n{e}")
+                _log_error(f"Error connecting to upstash database, or no database to connect to. Error:\n{e}")
 
-        if dbsize is not None:
+        if "upstash_active" in st.session_state and st.session_state.upstash_active is not None:
             col1, col2 = st.columns(2)
             with col1:
                 st.button(label = "Clear Chat", 
@@ -87,11 +88,10 @@ async def _render_sidebar():
                           use_container_width=True)
 
             with col2:
-                if dbsize is not None:
-                    st.button(label = "Share Session",
-                              on_click= _share_session,
-                              disabled=st.session_state.lock_widgets,
-                              use_container_width=True)
+                st.button(label = "Share Session",
+                          on_click= _share_session,
+                          disabled=st.session_state.lock_widgets,
+                          use_container_width=True)
         else:
             st.button(label = "Clear Chat", 
                       on_click= _clear_chat_current_agent, 
@@ -373,6 +373,7 @@ def _share_session():
         # save the chat with a new TTL
         new_ttl_seconds = st.session_state.app_config.share_chat_ttl_seconds
         redis.set(key, state_data, ex=new_ttl_seconds)
+        redis.close()
 
         # display the share dialog
         url = urllib.parse.quote(key)
@@ -481,7 +482,6 @@ def serve(config: AppConfig, agent_configs: Dict[str, AgentConfig]) -> None:
             _initialize_logger()
 
         st.session_state.lock_widgets = False
-        st.session_state.setdefault("event_loop", asyncio.new_event_loop())
 
         sidebar_state = "auto"
         if config.sidebar_collapsed is not None:
@@ -498,6 +498,4 @@ def serve(config: AppConfig, agent_configs: Dict[str, AgentConfig]) -> None:
 
         st.set_page_config(**page_settings)
 
-
-    loop = st.session_state.get("event_loop")
-    loop.run_until_complete(_main())
+    asyncio.run(_main())
