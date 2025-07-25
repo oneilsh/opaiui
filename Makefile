@@ -9,6 +9,7 @@ help:
 	@echo "  make clean        - Remove build artifacts"
 	@echo "  make build        - Build sdist and wheel"
 	@echo "  make check        - Check build with twine"
+	@echo "  make publish-test - Upload to TestPyPI"
 	@echo "  make publish      - Upload to PyPI (live, not test)"
 
 install:
