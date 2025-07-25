@@ -69,6 +69,7 @@ async def _render_sidebar():
 
             
         if "UPSTASH_REDIS_REST_URL" in os.environ and "UPSTASH_REDIS_REST_TOKEN" in os.environ and "upstash_active" not in st.session_state:
+            redis = None
             try:
                 redis = Redis.from_env()
                 dbsize = redis.dbsize()
@@ -79,7 +80,11 @@ async def _render_sidebar():
                 _log_error(f"Error connecting to upstash database, or no database to connect to. Error:\n{e}")
 
             finally:
-                redis.close()
+                if redis is not None:
+                    try:
+                        redis.close()
+                    except Exception as e:
+                        _log_error(f"Error closing Redis connection: {e}")
 
         if "upstash_active" in st.session_state and st.session_state.upstash_active is not None:
             col1, col2 = st.columns(2)
@@ -354,6 +359,7 @@ async def _handle_chat_input():
 
 
 def _share_session():
+    redis = None
     try:
         # most of the appconfig is not changeable, so no need to serialize it
         # we will keep some of the dynamic state info that is stored in st.session_state
@@ -390,13 +396,16 @@ def _share_session():
         _log_error(f"Error saving chat: {e}")
 
     finally:
-        redis.close()
-
+        if redis is not None:
+            try:
+                redis.close()
+            except Exception as e:
+                _log_error(f"Error closing Redis connection: {e}")
 
 
 def _rehydrate_state():
     session_id = st.query_params["session_id"]
-
+    redis = None
     try:
         redis = Redis.from_env()
         state_data_raw = redis.get(session_id)
@@ -413,7 +422,11 @@ def _rehydrate_state():
         redis.set(session_id, state_data, ex=new_ttl_seconds)
 
     finally:
-        redis.close()
+        if redis is not None:
+            try:
+                redis.close()
+            except Exception as e:
+                _log_error(f"Error closing Redis connection: {e}")
 
     st.session_state.show_function_calls = state_data["show_function_calls"]
     st.session_state.app_config.sidebar_collapsed = state_data["sidebar_collapsed"] # this isn't actually respected by Streamlit...
