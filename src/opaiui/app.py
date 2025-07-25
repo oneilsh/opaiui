@@ -73,11 +73,13 @@ async def _render_sidebar():
                 redis = Redis.from_env()
                 dbsize = redis.dbsize()
                 st.session_state.logger.info(f"Initializing session with sharing enabled. Shared chats DB size: {dbsize}")
-                redis.close()
                 st.session_state["upstash_active"] = True
 
             except Exception as e:
                 _log_error(f"Error connecting to upstash database, or no database to connect to. Error:\n{e}")
+
+            finally:
+                redis.close()
 
         if "upstash_active" in st.session_state and st.session_state.upstash_active is not None:
             col1, col2 = st.columns(2)
@@ -373,7 +375,6 @@ def _share_session():
         # save the chat with a new TTL
         new_ttl_seconds = st.session_state.app_config.share_chat_ttl_seconds
         redis.set(key, state_data, ex=new_ttl_seconds)
-        redis.close()
 
         # display the share dialog
         url = urllib.parse.quote(key)
@@ -388,25 +389,31 @@ def _share_session():
     except Exception as e:
         _log_error(f"Error saving chat: {e}")
 
+    finally:
+        redis.close()
+
 
 
 def _rehydrate_state():
     session_id = st.query_params["session_id"]
 
-    redis = Redis.from_env()
-    state_data_raw = redis.get(session_id)
-    state_data = json.loads(state_data_raw)
+    try:
+        redis = Redis.from_env()
+        state_data_raw = redis.get(session_id)
+        state_data = json.loads(state_data_raw)
 
-    if state_data is None:
-        raise ValueError(f"Session Key {session_id} not found in database")
+        if state_data is None:
+            raise ValueError(f"Session Key {session_id} not found in database")
 
 
-    # update ttl and access count, save back to redis
-    new_ttl_seconds = st.session_state.app_config.share_chat_ttl_seconds
-    access_count = state_data["access_count"] + 1
-    state_data["access_count"] = access_count
-    redis.set(session_id, state_data, ex=new_ttl_seconds)
+        # update ttl and access count, save back to redis
+        new_ttl_seconds = st.session_state.app_config.share_chat_ttl_seconds
+        access_count = state_data["access_count"] + 1
+        state_data["access_count"] = access_count
+        redis.set(session_id, state_data, ex=new_ttl_seconds)
 
+    finally:
+        redis.close()
 
     st.session_state.show_function_calls = state_data["show_function_calls"]
     st.session_state.app_config.sidebar_collapsed = state_data["sidebar_collapsed"] # this isn't actually respected by Streamlit...
