@@ -22,6 +22,7 @@ A demo repo is available at [https://github.com/oneilsh/opaiui-demo](https://git
 
 - While Pydantic.AI [MCP toolsets](https://ai.pydantic.dev/mcp/client/) are supported, the context manager implementation requires reinialization for each message loop. This may cause UI delays if MCP server connections are slow to initialize.
 - The chat input box loses focus between messages, as a side effect of disabling it to prevent interruption during streaming responses, a [known limitation and workaround](https://github.com/streamlit/streamlit/issues/8323#issuecomment-2456773202). A future version may implement an unsafe-don't-disable option.
+- There's a lot of async code and the package uses `nest_asyncio`, which may not be playing as well as it could with Streamlit (see also discussion [here](https://github.com/streamlit/streamlit/issues/8488)).
 
 
 ## Installation
