@@ -10,6 +10,7 @@ import os
 import json
 from typing import Any, Callable, List, Optional
 from opaiui import AgentConfig, AppConfig, AgentState
+import inspect
 
 import dill
 import hashlib
@@ -36,6 +37,13 @@ from pydantic_ai.messages import (
 )
 
 
+def current_deps():
+    """Get the current agent's dependencies."""
+    current_agent_config = _current_agent_config()
+    if current_agent_config is not None:
+        return current_agent_config.deps
+    else:
+        raise ValueError("No current agent configuration found in session state.")
 
 
 def _current_agent_config():
@@ -57,8 +65,12 @@ async def _render_sidebar():
 
         current_config = _current_agent_config()
         if hasattr(current_config, "sidebar_func") and callable(current_config.sidebar_func):
-            deps = current_config.deps
-            await current_config.sidebar_func(deps)
+            sig = inspect.signature(current_config.sidebar_func)
+            if len(sig.parameters) == 0:
+                await current_config.sidebar_func()
+            else:
+                st.session_state.logger.warning(f"Passing {current_config.sidebar_func.__name__} to sidebar_func is deprecated and will be removed in a future version. Please use a callable with no parameters, and access deps via current_deps().")
+                await current_config.sidebar_func(current_config.deps)
 
         st.markdown("#")
         st.markdown("#")
@@ -269,10 +281,24 @@ async def _process_input(prompt):
     st.session_state.lock_widgets = False  # Step 5: Unlock the UI   
     st.rerun()
 
-
-
+# call_render_func is a deprecated name for render_in_chat
 async def call_render_func(render_func_name: str, render_args: dict, before_agent_response: bool = False):
     """Adds a DisplayMessage with a render function to the current agent's display messages."""
+    st.session_state.logger.warning("call_render_func is deprecated. Please use render_in_chat instead.")
+    await render_in_chat(render_func_name, render_args, before_agent_response)
+
+def ui_locked():
+    """Check if the app is currently processing an agent run. Useful for disabling UI elements during long-running operations."""
+    return st.session_state.lock_widgets
+
+async def render_in_chat(render_func_name: str, render_args: dict, before_agent_response: bool = False):
+    """Adds a DisplayMessage with a render function to the current agent's display messages."""
+    # verifty that render_func_name is a string and render_args is a dict with string keys
+    if not isinstance(render_func_name, str):
+        raise ValueError(f"Error calling {render_func_name!r}: first argument to render_in_chat must be a string, got {type(render_func_name)}")
+    if not isinstance(render_args, dict) or not all(isinstance(k, str) for k in render_args.keys()):
+        raise ValueError(f"Error calling {render_func_name!r}: second argument to render_in_chat must be a dict with string keys, got {type(render_args)}")
+
     current_agent_config = _current_agent_config()
     if render_func_name in st.session_state.render_funcs:
         dmessage = DisplayMessage(render_func=render_func_name, render_args=render_args, before_agent_response=before_agent_response)

@@ -42,9 +42,8 @@ An opaiui application consists of:
    1. Other page metadata, such as tab title and icon
 1. A dictionary of `AgentConfig` objects, keyed by agent name, each specifying:
    1. A Pydantic.AI [agent](https://ai.pydantic.dev/agents/), with or without tools (including MCP)
-   1. A `deps` object to use with the agent, as described by [Pydantic.AI](https://ai.pydantic.dev/dependencies/). The `deps`
-   may also be used to store agent state across messages
-   1. A sidebar function for agent-specific sidebar rendering (which may read state from `deps`)
+   1. A `deps` object to use with the agent, as described by [Pydantic.AI](https://ai.pydantic.dev/dependencies/). The `deps`  may also be used to store and retrieve agent state across messages and components.
+   1. A sidebar function for agent-specific sidebar rendering
    1. Other agent metadata, such as avatar and initial greeting
 
 
@@ -70,15 +69,14 @@ dotenv.load_dotenv()
 basic_agent = Agent('openai:gpt-4o')
 ```
 
-We can optionally define a function to render a sidebar component for the agent when active. **This function must be async**, and take a `deps` (which will be passed from the agent `deps`, see below).
+We can optionally define a function to render a sidebar component for the agent when active. **This function must be async**.
 
 ```python
-async def agent_sidebar(deps):
+async def agent_sidebar():
     st.markdown("A basic agent with no special functionality.")
 ```
 
-If we like, we could define multiple agents, and a unique sidebar rendering function for each. To use them with the app,
-we collect them into a dictionary of `AgentConfig`s. Keys are used for identifying the agent by name in the UI:
+If we like, we could define multiple agents, and a unique sidebar rendering function for each. To use them with the app, we collect them into a dictionary of `AgentConfig`s; only `agent` is required here, others have basic defaults. Keys are used for identifying the agent by name in the UI:
 
 ```python
 agent_configs = {
@@ -138,31 +136,30 @@ streamlit run main_app.py
 
 ### Sharing Sessions
 
-Sessions and chats are sharable, backed by [Upstash](https://upstash.com/) serverless storage. To enable, simply create
-a Redis database on Upstash, and add `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` to your `.env` or environment variable cloud config.
+Sessions and chats are sharable, backed by [Upstash](https://upstash.com/) serverless storage. To enable, simply create a Redis database on Upstash, and add `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` to your `.env` or environment variable cloud config.
 
 <p align="center">
   <img src="assets/share_screenshot.png" width="50%" alt="Sharing screenshot">
 </p>
 
-Sessions are saved for 30 days by default; this is configurable with `share_chat_ttl_seconds` in `AppConfig`, and
-visiting a shared session URL will reset the timer.
+Sessions are saved for 30 days by default; this is configurable with `share_chat_ttl_seconds` in `AppConfig`, and visiting a shared session URL will reset the timer.
 
 ### `deps` and State
 
-Pydantic.AI utilizes a [dependencies](https://ai.pydantic.dev/dependencies/) injection pattern, whereby each interaction with an agent may be provided a `deps` object; this object is passed to agent tools when they are called, allowing for usage of external functionality such as database connections or API calls. While Pydantic.AI allows these dependencies to change between agent 'runs', opaiui stores `deps` in the `AgentConfig` and provides it for every run (message to the agent).
+Pydantic.AI utilizes a [dependencies](https://ai.pydantic.dev/dependencies/) injection pattern, whereby each interaction with an agent may be provided a `deps` object; this object is passed to agent tools when they are called, for use in accessing external resouces (database connetion, API call, file access, etc). While Pydantic.AI allows these dependencies to change between agent 'runs', this is not possible with opaiui, which stores `deps` in the `AgentConfig` and provides it for every run (message to the agent).
 
-Opaiui also utilizes `deps` for state management; agent tools may write to `deps`, and `deps` is passed to the sidebar rendering
-function for stateful UI components. In fact, if `deps.state` is an object serializable with `dill`, it will be saved and reloaded on session sharing! Opaiui provides an `AgentState` class for this purpose (but it's really just a Pydantic model allowing extra fields).
+Opaiui also utilizes `deps` for state management, and agent tools as well as the sidebar and other functions can access the current `deps` via `current_deps()`, in addition to the pydantic.ai standard `ctx.deps` which is limited to invoked tools. When sharing a chat, `deps` in general are not saved, because `dill` cannot serialize arbitrary objects. However, if *`deps.state`* is serializable, it will be saved and reloaded on session sharing. Opaiui provides an `AgentState` convenince class for this purpose, but it's really just a Pydantic model allowing extra fields. *Adding unserializable data to `deps.state` will result in an error if the session is shared.*
+
+*Usage note: if you plan to use Pydantic models in `deps.state`, you will encouter an [error](https://github.com/uqfoundation/dill/issues/650) if they are defined in the main app file. The
+simples workaround is to define them in another module and import them.*
 
 To see how this works, we can create an agent with access to a Library, and some tools to read and write from it.
 
 ```python
 # new imports only:
 from pydantic_ai import RunContext
-from opaiui.app import AgentState
+from opaiui.app import AgentState, current_deps
 
-library_agent = Agent('gpt-4o')
 
 # Defines Library objects with sharable AgentState
 class Library():
@@ -170,7 +167,7 @@ class Library():
         self.state = AgentState()
         self.state.library = []
 
-    def add(self, article: str):
+    def add_article(self, article: str):
         """Save an article to the library."""
         self.state.library.append(article)
 
@@ -179,42 +176,45 @@ class Library():
             return "None"
         return "\n".join(f"- {entry}" for entry in self.state.library)
 
+
+library_agent = Agent('gpt-4o')
+
 @library_agent.tool
 async def add_to_library(ctx: RunContext[Library], article: str) -> str:
     """Add a given article to the library."""
-    ctx.deps.add(article)
+    # here in a tool we could also use the pydantic.ai standard: deps = ctx.deps
+    deps = current_deps()
+
+    deps.add_article(article)
     return f"Article added. Current library size: {len(ctx.deps.state.library)}"
 
 @library_agent.tool
 async def count_library(ctx: RunContext[Library]):
     """Get the number of articles currently in the library."""
-    return len(ctx.deps.state.library)
+    # pydantic.ai standard: return len(ctx.deps.state.library)
+    return len(current_deps().state.library)
 ```
 
-Now, our `library_agent` can choose to call its `add_to_library` tool, providing a string to store in the library, or get a count of library items with `count_library`.
+Now, our `library_agent` can choose to call its `add_to_library` tool, providing a string to store, or get a count of library items with `count_library`.
 
-We define a new sidebar function to render the library contents, as well as a button to clear it. As before,
-this function must be `async` and take the `deps` parameter:
+We define a new sidebar function to render the library contents, as well as a button to clear it. As before, this function must be `async`:
 
 ```python
-async def library_sidebar(deps):
+async def library_sidebar():
     """Render the agent's sidebar in Streamlit."""
+    deps = current_deps()
+
     st.markdown("### Library")
     st.markdown(deps.as_markdown())
 
-    def clear_library():
-        """Clear the library."""
-        deps.state.library = []
-    
     if st.button("Clear Library"):
-        clear_library()
+        deps.state.library = []
         st.rerun()
 ```
 
-This `clear_library` function and button are a bit advanced, but highlight the flexibility allowed by incorporating Streamlit
-components. The call to `st.rerun()` forces the UI to re-render after the button executes, updating the sidebar display.
+This `clear_library` button a bit advanced, but shows the flexibility of incorporating Streamlit components. The call to `st.rerun()` forces the UI to re-render after the button executes, updating the sidebar display.
 
-**Note:** The "Clear Chat" button clears out the chat history and usage, but does *not* clear the agent's state.
+*Usage note:* The "Clear Chat" button clears out the chat history and token usage count, but does not clear the agent's `deps.state`.*
 
 To make use of these, we need to create a `deps` as a new library object for the `AgentConfig`:
 
@@ -232,16 +232,14 @@ agent_configs = {
 
 ### Agent-based UI Component Rendering
 
-Last but not least, opaiui allows for arbitrary rendering of Streamlit components directly in the chat by agent tool call.
-Streamlit provides a wide range of easy-to-use UI [elements](https://docs.streamlit.io/develop/api-reference) and community-built [components](https://streamlit.io/components).
+Last but not least, opaiui allows for arbitrary rendering of UI components directly in the chat by agent tool call. Streamlit provides a wide range of easy-to-use UI [elements](https://docs.streamlit.io/develop/api-reference) and community-built [components](https://streamlit.io/components).
 
-This functionality is enabled by providing a list of rendering functions to the `AppConfig`, and in agent tool calls,
-using them via `opaiui.app.call_render_func`. Rendering functions must be `async`.
+This functionality is enabled by providing a list of rendering functions to the `AppConfig`, and in agent tool calls, using them via `opaiui.app.render_in_chat`. Rendering functions must be `async`.
 
 ```python
 # new imports only
 import pandas
-from opaiui.app import call_render_func
+from opaiui.app import render_in_chat
 
 async def render_df(df: pandas.DataFrame):
     """Render a DataFrame in Streamlit."""
@@ -259,27 +257,26 @@ app_config = AppConfig(
 )
 ```
 
-To trigger a render if the chat, an agent tool may call `call_render_func` - the first argument is the name of the
-rendering function to call (as a string), the second are arguments to pass (as a dictionary), and finally, `before_agent_response`, a boolean indicating if the render should be before or after the agents' response in the chat 
-(after is the default).
+To use these rendering functions, an agent tool may call `render_in_chat`, which adds the execution of a given rendering function to the history. The first argument is the name of the registered rendering function to call as a string, the second is a dictionary of arguments, and finally, `before_agent_response`, a boolean indicating if the render should be before or after the agents' response in the chat (after is the default).
 
 ```python
 @library_agent.tool
 async def show_library(ctx: RunContext[Library]) -> str:
     """Displays the current library to the user as a dataframe when executed."""
-    if not ctx.deps.state.library:
-        await call_render_func("show_warning", {"message": "Library is empty."}, before_agent_response = True)
+    deps = current_deps()
+
+    if deps.state.library is None or len(deps.state.library) == 0:
+        await render_in_chat("show_warning", {"message": "Library is empty."}, before_agent_response = True)
         return "Library is empty. A warning has been displayed to the user prior to this response."
     
-    library_df = pandas.DataFrame(ctx.deps.state.library, columns=["Articles"])
-    await call_render_func("render_df", {"df": library_df})
+    library_as_df = pandas.DataFrame(deps.state.library, columns=["Articles"])
+    await render_in_chat("render_df", {"df": library_as_df})
     return "Library will be displayed as a DataFrame *below* your response in the chat. You may refer to it, but do not repeat the library contents in your response."
 ```
 
-In the example above, asking the agent to show the library will either render a warning about the library being empty
-prior to the agents' response, or a dataframe with the library contents after the agents' response. Note that
-the agent does not 'see' the rendered result as part of its view of the chat history; return values may be used to provide
-relevant information or data to the agent. In the current implementation, the rendering is not visible in the chat until
+*Usage note: these dynamic messages are not part of the conversation history that the LLM is given, prompt accordingly.*
+
+In the example above, asking the agent to show the library will either render a warning about the library being empty prior to the agents' response, or a dataframe with the library contents after the agents' response. In the current implementation, the rendering is not visible in the chat until
 the agent has completed responding.
 
 <p align="center">
@@ -301,6 +298,7 @@ logger.info("Hello from opaiui")
 
 ## Changelog
 
+- 0.11.0: added `current_deps()`, deprecated `call_render_func` in favor of `render_in_chat`, deprecated accepting `deps` as input to sidebar func, added `ui_locked()` for checking UI status.
 - 0.10.3: no cache event loop (possibly cleaner? see also [here](https://github.com/streamlit/streamlit/issues/8488)), cleanup upstash connections
 - 0.10.0: Relaxed python dep to >=3.10
 - 0.9.1: Added `get_logger()`
