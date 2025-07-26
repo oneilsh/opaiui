@@ -1,5 +1,18 @@
 # opaiui: Opinionated Pydantic.AI User Interface
 
+Table of Contents:
+1. [Overview](#overview)
+2. [Installation](#installation)
+3. [Usage](#usage)
+   - [Basic Application](#basic-application)
+   - [Sharing Sessions](#sharing-sessions)
+   - [`deps` and State](#deps-and-state)
+   - [Agent-based UI Component Rendering](#agent-based-ui-component-rendering)
+   - [Logging](#logging)
+4. [Changelog](#changelog)
+
+## Overview
+
 Opaiui (*oh-pie-you-eye*) provides a simple but flexible [Streamlit](https://streamlit.io) user interface 
 for [Pydantic.AI](https://ai.pydantic.dev/) agents. The following features are supported:
 
@@ -120,7 +133,7 @@ app_config = AppConfig(
 ```
 
 In addition to the advanced options documented above, `share_chat_ttl_seconds` configures time-to-live for shared sessions
-(see below), and `rendering_functions` specifies a set of functions agents may call to render Streamlit widgets to the chat (see below).
+(see below), and `rendering_functions` specifies a set of functions agents may call to render UI components to the chat (see below).
 
 With these basic configurations in place, we can serve the app:
 
@@ -128,7 +141,7 @@ With these basic configurations in place, we can serve the app:
 serve(app_config, agent_configs)
 ```
 
-Run the app with `streamlit run`, or deploy to the Streamlit hosted cloud:
+Run the app with `streamlit run`, or deploy to the hosted cloud.
 
 ```bash
 streamlit run main_app.py
@@ -168,7 +181,6 @@ class Library():
         self.state.library = []
 
     def add_article(self, article: str):
-        """Save an article to the library."""
         self.state.library.append(article)
 
     def as_markdown(self) -> str:
@@ -201,7 +213,6 @@ We define a new sidebar function to render the library contents, as well as a bu
 
 ```python
 async def library_sidebar():
-    """Render the agent's sidebar in Streamlit."""
     deps = current_deps()
 
     st.markdown("### Library")
@@ -212,7 +223,7 @@ async def library_sidebar():
         st.rerun()
 ```
 
-This `clear_library` button a bit advanced, but shows the flexibility of incorporating Streamlit components. The call to `st.rerun()` forces the UI to re-render after the button executes, updating the sidebar display.
+This `clear_library` button a bit advanced, but shows the flexibility of incorporating interactive components. The call to `st.rerun()` forces the UI to re-render after the button executes, forcing an update to the UI.
 
 *Usage note:* The "Clear Chat" button clears out the chat history and token usage count, but does not clear the agent's `deps.state`.*
 
