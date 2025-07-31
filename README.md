@@ -51,12 +51,12 @@ pip install opaiui
 An opaiui application consists of:
 
 1. An `AppConfig`, specifying:
-   1. A set of Streamlit-based rendering functions, which an AI agent may execute to display widgets in the chat
    1. Other page metadata, such as tab title and icon
 1. A dictionary of `AgentConfig` objects, keyed by agent name, each specifying:
    1. A Pydantic.AI [agent](https://ai.pydantic.dev/agents/), with or without tools (including MCP)
    1. A `deps` object to use with the agent, as described by [Pydantic.AI](https://ai.pydantic.dev/dependencies/). The `deps`  may also be used to store and retrieve agent state across messages and components.
    1. A sidebar function for agent-specific sidebar rendering
+   1. A set of Streamlit-based rendering functions, which an AI agent may execute via tools to display widgets in the chat
    1. Other agent metadata, such as avatar and initial greeting
 
 
