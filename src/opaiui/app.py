@@ -527,7 +527,8 @@ def serve(config: AppConfig, agent_configs: Dict[str, AgentConfig]) -> None:
 
         # we need to do the same thing for the agent configs
         for name, agent_config in agent_configs.items():
-            if agent_config.rendering_functions is not None:
+            # if its already a dictionary, it has been previously registered (sometimes caused by reloading the app)
+            if agent_config.rendering_functions is not None and not isinstance(agent_config.rendering_functions, dict):
                 # store the agent-specific render functions in session state for easy access
                 st.session_state.agent_configs[name].rendering_functions = {func.__name__: func for func in agent_config.rendering_functions}
             else:

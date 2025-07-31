@@ -326,7 +326,7 @@ logger.info("Hello from opaiui")
 
 ## Changelog
 
-- 0.12.1: bugfix in agent rendering functions
+- 0.12.2: bugfix in agent rendering functions
 - 0.12.0: accept `rendering_functions` in `AgentConfig`, deprecate usage in `AppConfig`
 - 0.11.0: added `current_deps()`, deprecated `call_render_func` in favor of `render_in_chat`, deprecated accepting `deps` as input to sidebar func, added `ui_locked()` for checking UI status.
 - 0.10.3: no cache event loop (possibly cleaner? see also [here](https://github.com/streamlit/streamlit/issues/8488)), cleanup upstash connections
