@@ -31,7 +31,7 @@ class AppConfig(BaseModel):
     show_function_calls: bool = Field(default=False, description="Whether to show function calls in the UI.")
 
     rendering_functions: List[Callable[[Any], None]] = Field(
-        default_factory=list,
+        default_factory=list, description="List of async functions which may be called from agent tools using `render_in_chat`. WARNING: rendering_functions is deprecated in AppConfig, use agent-specific AgentConfig.rendering_functions instead. This will be removed in a future version."
     )
 
     @field_validator("menu_items", mode="after")
@@ -69,6 +69,10 @@ class AgentConfig(BaseModel):
 
     sidebar_func: Optional[Callable[[Any], None]] = Field(default=None, exclude=True, description="Function to render the agent's sidebar components using Streamlit functions. Takes the agent's dependencies as an argument for stateful information.")
 
+    rendering_functions: List[Callable[[Any], None]] = Field(
+        default_factory=list, description="List of async functions which may be called from agent tools using `render_in_chat`. These functions should be defined with `async def` and can be used to render custom components in the chat."
+    )
+
     _usage: Usage = PrivateAttr(default_factory=Usage)
     _history_messages: List[ModelMessage] = PrivateAttr(default_factory=list)
     _display_messages: List[DisplayMessage] = PrivateAttr(default_factory=list)
@@ -79,6 +83,13 @@ class AgentConfig(BaseModel):
         arbitrary_types_allowed=True,
         serialize_exclude={"agent", "sidebar_func"},
     )
+
+    @field_validator("rendering_functions", mode="before")
+    @classmethod
+    def validate_rendering_functions(cls, v):
+        if not all(inspect.iscoroutinefunction(func) for func in v):
+            raise ValueError("All rendering functions must be async functions (defined with async def).")
+        return v
 
     def serializable_dict(self):
         base = self.model_dump(exclude={"agent", "sidebar_func", "deps"}) # private attributes are not included by default

@@ -107,6 +107,8 @@ agent_configs = {
 }
 ```
 
+An additional argument, `rendering_functions`, allows agent tools to render Streamlit components directly in the chat and is described below.
+
 Next we create an `AppConfig`, which specifies various global page settings. Note that `menu_items` are those [supported by Streamlit](https://docs.streamlit.io/develop/api-reference/configuration/st.set_page_config), and only accept keys `"Get Help"`, `"Report a Bug"`, and `"About"`.
 
 ```python
@@ -132,8 +134,7 @@ app_config = AppConfig(
 )
 ```
 
-In addition to the advanced options documented above, `share_chat_ttl_seconds` configures time-to-live for shared sessions
-(see below), and `rendering_functions` specifies a set of functions agents may call to render UI components to the chat (see below).
+In addition to the advanced options documented above, `share_chat_ttl_seconds` configures time-to-live for shared sessions (see below).
 
 With these basic configurations in place, we can serve the app:
 
@@ -174,7 +175,6 @@ from pydantic_ai import RunContext
 from opaiui.app import AgentState, current_deps
 
 
-# Defines Library objects with sharable AgentState
 class Library():
     def __init__(self):
         self.state = AgentState()
@@ -194,8 +194,7 @@ library_agent = Agent('gpt-4o')
 @library_agent.tool
 async def add_to_library(ctx: RunContext[Library], article: str) -> str:
     """Add a given article to the library."""
-    # here in a tool we could also use the pydantic.ai standard: deps = ctx.deps
-    deps = current_deps()
+    deps = current_deps() # or deps = ctx.deps (pydantic.ai standard)
 
     deps.add_article(article)
     return f"Article added. Current library size: {len(ctx.deps.state.library)}"
@@ -203,49 +202,60 @@ async def add_to_library(ctx: RunContext[Library], article: str) -> str:
 @library_agent.tool
 async def count_library(ctx: RunContext[Library]):
     """Get the number of articles currently in the library."""
-    # pydantic.ai standard: return len(ctx.deps.state.library)
-    return len(current_deps().state.library)
+    return len(current_deps().state.library) # or len(ctx.deps.state.library)
 ```
 
 Now, our `library_agent` can choose to call its `add_to_library` tool, providing a string to store, or get a count of library items with `count_library`.
 
-We define a new sidebar function to render the library contents, as well as a button to clear it. As before, this function must be `async`:
+We define a new sidebar function to render the library contents. As before, this function must be `async`:
 
 ```python
+from opaiui.app import ui_locked
+
 async def library_sidebar():
     deps = current_deps()
 
     st.markdown("### Library")
     st.markdown(deps.as_markdown())
+```
 
-    if st.button("Clear Library"):
+For more advanced use cases, we can add interactive components to the sidebar rendering. This bit of code
+renders a button to clear the library, and `st.rerun()` is added to force a UI refresh to reflect the change. Most Streamlit widgets take a `disabled` parameter - setting it to the value of `opaiui.app.ui_locked()` disables it while the agent is streaming a response. Without this, an interaction with
+the widget would interrupt the response and disrupt the session.  
+
+```python
+
+    # still in library_sidebar()
+    if st.button("Clear Library", disabled = ui_locked()):
         deps.state.library = []
         st.rerun()
 ```
 
-This `clear_library` button a bit advanced, but shows the flexibility of incorporating interactive components. The call to `st.rerun()` forces the UI to re-render after the button executes, forcing an update to the UI.
 
 *Usage note:* The "Clear Chat" button clears out the chat history and token usage count, but does not clear the agent's `deps.state`.*
 
-To make use of these, we need to create a `deps` as a new library object for the `AgentConfig`:
+Finally, to make use of these pieces, we create a new `Library()` object for `deps` in the `AgentConfig`:
 
 ```python
 agent_configs = {
     "Basic Agent": AgentConfig(
         agent = library_agent,
-        deps = Library(),
+        # Library() object provided as `deps` to agent, and accessible with current_deps()
+        deps = Library(), # <-
         greeting = "Hello! How can I help you today?" 
         agent_avatar = "🧠"
         sidebar_func = library_sidebar
     )
 }
+
+# ... continue on to AppConfig ans serve() as above.
 ```
 
 ### Agent-based UI Component Rendering
 
 Last but not least, opaiui allows for arbitrary rendering of UI components directly in the chat by agent tool call. Streamlit provides a wide range of easy-to-use UI [elements](https://docs.streamlit.io/develop/api-reference) and community-built [components](https://streamlit.io/components).
 
-This functionality is enabled by providing a list of rendering functions to the `AppConfig`, and in agent tool calls, using them via `opaiui.app.render_in_chat`. Rendering functions must be `async`.
+This functionality is enabled by providing a list of rendering functions available to the agent in its `AgentConfig`, and in agent tool calls, using them via `opaiui.app.render_in_chat`. Rendering functions must be `async`.
 
 ```python
 # new imports only
@@ -261,11 +271,18 @@ async def show_warning(message: str):
     st.warning(message)
 
 
-app_config = AppConfig(
-    page_title = "Library App",
-    page_icon = "📚",
-    rendering_functions = [render_df, show_warning]
-)
+agent_configs = {
+    "Basic Agent": AgentConfig(
+        agent = library_agent,
+        deps = Library(),
+        greeting = "Hello! How can I help you today?" 
+        agent_avatar = "🧠"
+        sidebar_func = library_sidebar,
+        rendering_functions = [render_df, show_warning]  # <- 
+    )
+}
+
+# ... continue to define AppConfig and call serve()
 ```
 
 To use these rendering functions, an agent tool may call `render_in_chat`, which adds the execution of a given rendering function to the history. The first argument is the name of the registered rendering function to call as a string, the second is a dictionary of arguments, and finally, `before_agent_response`, a boolean indicating if the render should be before or after the agents' response in the chat (after is the default).
@@ -285,7 +302,7 @@ async def show_library(ctx: RunContext[Library]) -> str:
     return "Library will be displayed as a DataFrame *below* your response in the chat. You may refer to it, but do not repeat the library contents in your response."
 ```
 
-*Usage note: these dynamic messages are not part of the conversation history that the LLM is given, prompt accordingly.*
+*Usage note: these dynamic messages are not part of the conversation history that the LLM is given, write prompts and response messages accordingly.*
 
 In the example above, asking the agent to show the library will either render a warning about the library being empty prior to the agents' response, or a dataframe with the library contents after the agents' response. In the current implementation, the rendering is not visible in the chat until
 the agent has completed responding.
@@ -309,6 +326,8 @@ logger.info("Hello from opaiui")
 
 ## Changelog
 
+- 0.12.1: bugfix in agent rendering functions
+- 0.12.0: accept `rendering_functions` in `AgentConfig`, deprecate usage in `AppConfig`
 - 0.11.0: added `current_deps()`, deprecated `call_render_func` in favor of `render_in_chat`, deprecated accepting `deps` as input to sidebar func, added `ui_locked()` for checking UI status.
 - 0.10.3: no cache event loop (possibly cleaner? see also [here](https://github.com/streamlit/streamlit/issues/8488)), cleanup upstash connections
 - 0.10.0: Relaxed python dep to >=3.10

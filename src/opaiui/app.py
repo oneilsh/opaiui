@@ -300,7 +300,7 @@ async def render_in_chat(render_func_name: str, render_args: dict, before_agent_
         raise ValueError(f"Error calling {render_func_name!r}: second argument to render_in_chat must be a dict with string keys, got {type(render_args)}")
 
     current_agent_config = _current_agent_config()
-    if render_func_name in st.session_state.render_funcs:
+    if render_func_name in current_agent_config.rendering_functions or render_func_name in st.session_state.render_funcs:
         dmessage = DisplayMessage(render_func=render_func_name, render_args=render_args, before_agent_response=before_agent_response)
         current_agent_config._delayed_messages.append(dmessage)
     else:
@@ -313,10 +313,10 @@ async def _render_message(dmessage: DisplayMessage):
         _log_error(f"Expected DisplayMessage in _render_message(), got {type(dmessage)}")
         return
     
+    current_agent_config = _current_agent_config()
     if dmessage.model_message:
         message = dmessage.model_message
 
-        current_agent_config = _current_agent_config()
         if isinstance(message, ModelResponse):
             # message is a ModelResponse, which has a .parts list
             # elements will be one of 
@@ -351,8 +351,13 @@ async def _render_message(dmessage: DisplayMessage):
                 st.write(message.parts)
     else:
         # this is a DisplayMessage with no model_message, so it must be a custom render function
-        if dmessage.render_func and dmessage.render_func in st.session_state.render_funcs:
-            render_func = st.session_state.render_funcs[dmessage.render_func]
+        if dmessage.render_func and (dmessage.render_func in current_agent_config.rendering_functions or dmessage.render_func in st.session_state.render_funcs):
+            # choose agent-specific rendering function first
+            if dmessage.render_func in current_agent_config.rendering_functions:
+                render_func = current_agent_config.rendering_functions[dmessage.render_func]
+            else:
+                render_func = st.session_state.render_funcs[dmessage.render_func]
+
             if callable(render_func):
                 try:
                     render_args = dmessage.render_args or {}
@@ -520,12 +525,24 @@ def serve(config: AppConfig, agent_configs: Dict[str, AgentConfig]) -> None:
         else:
             st.session_state.render_funcs = {}
 
+        # we need to do the same thing for the agent configs
+        for name, agent_config in agent_configs.items():
+            if agent_config.rendering_functions is not None:
+                # store the agent-specific render functions in session state for easy access
+                st.session_state.agent_configs[name].rendering_functions = {func.__name__: func for func in agent_config.rendering_functions}
+            else:
+                st.session_state.agent_configs[name].rendering_functions = {}
+
         # editable by widgets
         st.session_state.current_agent_name = list(agent_configs.keys())[0]  # Default to the first agent
         st.session_state.show_function_calls = config.show_function_calls
 
         if "logger" not in st.session_state:
             _initialize_logger()
+
+        # if they have any rendering_functions in the AppConfig, print a deprecation warning
+        if config.rendering_functions:
+            st.session_state.logger.warning("AppConfig.rendering_functions is deprecated. Use AgentConfig.rendering_functions instead. This will be removed in a future version.")
 
         st.session_state.lock_widgets = False
 
