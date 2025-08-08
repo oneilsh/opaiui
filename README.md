@@ -7,6 +7,7 @@ Table of Contents:
    - [Basic Application](#basic-application)
    - [Sharing Sessions](#sharing-sessions)
    - [`deps` and State](#deps-and-state)
+   - [Updating the Status Display]($updating-the-status-display)
    - [Agent-based UI Component Rendering](#agent-based-ui-component-rendering)
    - [Logging](#logging)
 4. [Changelog](#changelog)
@@ -251,6 +252,31 @@ agent_configs = {
 # ... continue on to AppConfig ans serve() as above.
 ```
 
+### Updating the Status Display
+
+The UI automatically shows a status display with the agent is processing, updating with tool call names
+and arguments as they happen. We can update the status explicitly during tool calls with `set_status()`, 
+which takes the same arguments as [st.status.update()](https://docs.streamlit.io/develop/api-reference/status/st.status).
+
+```
+from opaiui.app import set_status
+import time
+
+@library_agent.tool
+async def embed_library(ctx: RunContext[Library]):
+    # TODO: implement embedding logic
+
+    set_status("Fetching library contents...")
+    time.sleep(1)
+    set_status("Embedding library contents...")
+    time.sleep(1)
+    set_state("Embedding completed, saving...", state = "complete")
+    time.sleep(1)
+
+    return "The contents of the library have been embedded."
+
+```
+
 ### Agent-based UI Component Rendering
 
 Last but not least, opaiui allows for arbitrary rendering of UI components directly in the chat by agent tool call. Streamlit provides a wide range of easy-to-use UI [elements](https://docs.streamlit.io/develop/api-reference) and community-built [components](https://streamlit.io/components).
@@ -326,6 +352,7 @@ logger.info("Hello from opaiui")
 
 ## Changelog
 
+- 0.13.0: added `set_status()` for providing updates from tool calling
 - 0.12.2: bugfix in agent rendering functions
 - 0.12.0: accept `rendering_functions` in `AgentConfig`, deprecate usage in `AppConfig`
 - 0.11.0: added `current_deps()`, deprecated `call_render_func` in favor of `render_in_chat`, deprecated accepting `deps` as input to sidebar func, added `ui_locked()` for checking UI status.

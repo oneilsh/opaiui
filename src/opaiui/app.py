@@ -190,6 +190,22 @@ def _sync_generator_from_async(async_iter):
             break
 
 
+def set_status(**kwargs):
+    if "width" in kwargs:
+        _log_error("Parameter 'width' is not supported in set_state().")
+    if "status_box" in st.session_state:
+        st.session_state.status_box.update(**kwargs)
+        # I don't know why, but st.status is not adding to the expander properly, so we do it manually:
+        st.session_state.status_box.write(kwargs.get("label", ""))
+    else:
+        st.session_state.status_box = st.status(**kwargs)
+
+
+def _reset_status():
+    del st.session_state.status_box
+
+
+
 async def _process_input(prompt):
     with st.chat_message("user", avatar=st.session_state.app_config.user_avatar):
         st.markdown(prompt, unsafe_allow_html=True)
@@ -209,7 +225,7 @@ async def _process_input(prompt):
     current_display_messages = current_agent_config._display_messages
 
     with st.chat_message("assistant", avatar = current_agent_config.agent_avatar):
-        status = st.status("Checking available resources...")
+        set_status("Checking available resources...")
         async with current_agent.run_mcp_servers():
             async with current_agent.iter(prompt, deps = current_deps, message_history = current_history, usage = current_usage) as run:
                 async for node in run:
@@ -231,17 +247,21 @@ async def _process_input(prompt):
                                         if isinstance(event.delta, TextPartDelta):
                                             yield event.delta.content_delta
 
-                            status.update(label = "Answering...")
+                            set_status("Answering...")
                             st.write_stream(_extract_streamable_text(_sync_generator_from_async(request_stream)))
 
                     elif Agent.is_call_tools_node(node):
                         async with node.stream(run.ctx) as handle_stream:
                             async for event in handle_stream:
                                 if isinstance(event, FunctionToolCallEvent):
-                                    status.update(label = f"Calling tool: {event.part.tool_name!r}")
+                                    args_str = ", ".join(f"{k}={json.dumps(v)}" for k, v in event.part.args_as_dict().items())
+                                    if len(args_str) > 50:
+                                        args_str = args_str[:50] + "..."
+                                    set_status(f"Calling tool: {event.part.tool_name}({args_str})")
                                 elif isinstance(event, FunctionToolResultEvent):
-                                    status.update(label = f"Processing {event.result.tool_name!r} result")
+                                    set_status(f"Processing {event.result.tool_name} result")
 
+        _reset_status()
         result = run.result
         
         if not result:
