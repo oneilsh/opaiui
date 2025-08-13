@@ -1,6 +1,6 @@
 [project]
 name = "opaiui"
-version = "0.13.0"
+version = "0.13.2"
 description = "Opinionated Pydantic.AI User Interface"
 license = "MIT"
 readme = "README.md"

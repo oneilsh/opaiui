@@ -352,7 +352,7 @@ logger.info("Hello from opaiui")
 
 ## Changelog
 
-- 0.13.0: added `set_status()` for providing updates from tool calling
+- 0.13.2: added `set_status()` for providing updates from tool calling
 - 0.12.2: bugfix in agent rendering functions
 - 0.12.0: accept `rendering_functions` in `AgentConfig`, deprecate usage in `AppConfig`
 - 0.11.0: added `current_deps()`, deprecated `call_render_func` in favor of `render_in_chat`, deprecated accepting `deps` as input to sidebar func, added `ui_locked()` for checking UI status.
