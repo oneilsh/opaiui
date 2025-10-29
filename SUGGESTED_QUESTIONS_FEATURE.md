@@ -24,6 +24,26 @@ agent_configs = {
             "How do I get started?"
         ],
         enable_suggested_questions=True,  # Enable the feature
+        hide_suggested_questions_after_first_interaction=False,  # Keep showing (default)
+    )
+}
+```
+
+### Onboarding-Only Questions
+
+To use suggested questions only for initial onboarding (hide after first interaction):
+
+```python
+agent_configs = {
+    "My Agent": AgentConfig(
+        agent=my_agent,
+        suggested_questions=[
+            "What can you do?",
+            "How do I get started?",
+            "Show me an example"
+        ],
+        enable_suggested_questions=True,
+        hide_suggested_questions_after_first_interaction=True,  # Auto-hide after first use
     )
 }
 ```
@@ -77,11 +97,19 @@ async def my_custom_tool(ctx: RunContext):
   - The pills disappear immediately (smooth UX - no jarring re-renders)
   - The question is submitted as a regular user message
   - That question won't appear in the list again
-- The "Clear Chat" button resets the suggested questions to their initial state
-- Suggested questions are preserved when sharing sessions
+- **Auto-hide after first interaction** (optional):
+  - Set `hide_suggested_questions_after_first_interaction=True` to automatically hide questions after the user's first message
+  - Perfect for onboarding-only use cases
+  - User can still manually toggle them back on via Settings
+- The "Clear Chat" button resets everything to initial state:
+  - Resets asked questions
+  - Resets first interaction flag
+  - Re-shows questions if they were auto-hidden
+- Suggested questions state is preserved when sharing sessions
 - A "Show suggested questions" toggle appears in Settings if the feature is enabled:
   - Defaults to showing questions (checked)
-  - When unchecked, hides all suggested questions from view
+  - Automatically unchecked after first interaction if `hide_suggested_questions_after_first_interaction=True`
+  - User can manually toggle to show/hide at any time
   - Setting is preserved when sharing sessions
 
 ## UI Layout
@@ -95,23 +123,48 @@ The suggested questions are displayed using Streamlit's `st.pills` widget:
 
 ## Example Use Cases
 
-1. **Onboarding**: Provide initial questions to guide new users
+1. **Onboarding Only**: Help new users get started, then get out of the way
    ```python
-   suggested_questions=[
-       "Show me an example",
-       "What are your capabilities?",
-       "How do I use feature X?"
-   ]
+   AgentConfig(
+       agent=my_agent,
+       suggested_questions=[
+           "Show me an example",
+           "What are your capabilities?",
+           "How do I use feature X?"
+       ],
+       enable_suggested_questions=True,
+       hide_suggested_questions_after_first_interaction=True  # Hide after first use
+   )
    ```
 
-2. **Context-aware suggestions**: Let the agent suggest next steps
+2. **Persistent Suggestions**: Keep helping throughout the conversation
    ```python
+   AgentConfig(
+       agent=my_agent,
+       suggested_questions=[
+           "What can you help with?",
+           "Show current status",
+           "Explain the last result"
+       ],
+       enable_suggested_questions=True,
+       hide_suggested_questions_after_first_interaction=False  # Keep showing
+   )
+   ```
+
+3. **Context-aware suggestions**: Let the agent suggest next steps dynamically
+   ```python
+   AgentConfig(
+       agent=my_agent,
+       suggested_questions=["What can you do?"],
+       enable_suggested_questions=True,
+       enable_dynamic_suggested_questions=True,  # Agent can add more questions
+       hide_suggested_questions_after_first_interaction=False
+   )
    # Agent can call suggest_question_for_user() after completing a task
    # to guide the user on what to do next
-   enable_dynamic_suggested_questions=True
    ```
 
-3. **Workflow guidance**: Guide users through multi-step processes
+4. **Workflow guidance**: Guide users through multi-step processes
    ```python
    # Agent suggests "Step 2: Configure settings" after completing Step 1
    enable_dynamic_suggested_questions=True
@@ -126,4 +179,3 @@ Run the demo with:
 cd localtests
 streamlit run demo.py
 ```
-

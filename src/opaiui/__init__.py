@@ -82,6 +82,9 @@ class AgentConfig(BaseModel):
     enable_dynamic_suggested_questions: bool = Field(
         default=False, description="Whether to allow the agent to dynamically add suggested questions during conversation via tool calls."
     )
+    hide_suggested_questions_after_first_interaction: bool = Field(
+        default=False, description="If True, suggested questions will be hidden after the user's first interaction. Useful for onboarding-only suggested questions. Note: user can still toggle them back on via Settings."
+    )
 
     _usage: Usage = PrivateAttr(default_factory=Usage)
     _history_messages: List[ModelMessage] = PrivateAttr(default_factory=list)
@@ -89,6 +92,8 @@ class AgentConfig(BaseModel):
     _delayed_messages: List[DisplayMessage] = PrivateAttr(default_factory=list) # private attribute as temporary holding for rendering messages; they will be moved to _display_messages when the agent finishes running
     _asked_questions: set = PrivateAttr(default_factory=set) # tracks which suggested questions have been asked
     _current_suggested_questions: List[str] = PrivateAttr(default_factory=list) # current list of suggested questions (can be modified dynamically)
+    _has_had_first_interaction: bool = PrivateAttr(default=False) # tracks whether user has had their first interaction
+    _auto_hide_performed: bool = PrivateAttr(default=False) # tracks whether we've already performed the auto-hide once
 
 
     model_config = ConfigDict(
@@ -110,6 +115,8 @@ class AgentConfig(BaseModel):
         base["_display_messages"] = base64.b64encode(dill.dumps(self._display_messages)).decode("utf-8") if self._display_messages else None
         base["_asked_questions"] = list(self._asked_questions) # convert set to list for JSON serialization
         base["_current_suggested_questions"] = self._current_suggested_questions
+        base["_has_had_first_interaction"] = self._has_had_first_interaction
+        base["_auto_hide_performed"] = self._auto_hide_performed
         # if there's a deps.state, try to serialize it
         if self.deps is not None and hasattr(self.deps, "state"):
             base["deps_state"] = base64.b64encode(dill.dumps(self.deps.state)).decode("utf-8")
@@ -141,12 +148,20 @@ class AgentConfig(BaseModel):
         current_suggested_questions = []
         if "_current_suggested_questions" in data and data["_current_suggested_questions"] is not None:
             current_suggested_questions = data["_current_suggested_questions"]
+        
+        has_had_first_interaction = False
+        if "_has_had_first_interaction" in data and data["_has_had_first_interaction"] is not None:
+            has_had_first_interaction = data["_has_had_first_interaction"]
+        
+        auto_hide_performed = False
+        if "_auto_hide_performed" in data and data["_auto_hide_performed"] is not None:
+            auto_hide_performed = data["_auto_hide_performed"]
 
         deps_state = None
         if "deps_state" in data and data["deps_state"] is not None:
             deps_state = dill.loads(base64.b64decode(data["deps_state"]))
         # Remove runtime-only keys from data before constructing
-        data = {k: v for k, v in data.items() if k not in ("agent", "sidebar_func", "deps", "rendering_functions", "_display_messages", "_asked_questions", "_current_suggested_questions")}
+        data = {k: v for k, v in data.items() if k not in ("agent", "sidebar_func", "deps", "rendering_functions", "_display_messages", "_asked_questions", "_current_suggested_questions", "_has_had_first_interaction", "_auto_hide_performed")}
         obj = cls(**data, rendering_functions=[])  # Initialize with empty list, will be restored from session state
         obj.agent = agent
         obj.deps = deps
@@ -158,6 +173,8 @@ class AgentConfig(BaseModel):
         obj._display_messages = display_messages
         obj._asked_questions = asked_questions
         obj._current_suggested_questions = current_suggested_questions
+        obj._has_had_first_interaction = has_had_first_interaction
+        obj._auto_hide_performed = auto_hide_performed
         return obj
 
     # sidebar_func must be a callable and async (coroutine)

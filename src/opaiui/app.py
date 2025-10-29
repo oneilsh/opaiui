@@ -56,6 +56,17 @@ async def _render_sidebar():
     with st.sidebar:
         agent_names = list(st.session_state.agent_configs.keys())
         
+        # Check if we need to auto-hide suggested questions (before any widgets are rendered)
+        # Only do this once - after that, respect the user's manual toggle
+        current_config = _current_agent_config()
+        if (current_config.enable_suggested_questions and 
+            current_config.hide_suggested_questions_after_first_interaction and 
+            current_config._has_had_first_interaction and
+            not current_config._auto_hide_performed):
+            # Auto-hide after first interaction - update before checkbox is created
+            # Only do this once
+            st.session_state.show_suggested_questions = False
+            current_config._auto_hide_performed = True
 
         ## First: teh dropdown of agent selections
         new_agent_name = st.selectbox(label = "Current Agent:",
@@ -166,10 +177,16 @@ def _clear_chat_current_agent():
     
     # Reset suggested questions to initial state
     current_agent_config._asked_questions = set()
+    current_agent_config._has_had_first_interaction = False
+    current_agent_config._auto_hide_performed = False  # Reset so auto-hide can happen again
     if current_agent_config.suggested_questions is not None:
         current_agent_config._current_suggested_questions = list(current_agent_config.suggested_questions)
     else:
         current_agent_config._current_suggested_questions = []
+    
+    # Re-enable suggested questions if they were auto-hidden after first interaction
+    if current_agent_config.hide_suggested_questions_after_first_interaction:
+        st.session_state.show_suggested_questions = True
 
     st.session_state.lock_widgets = False
 
@@ -316,7 +333,9 @@ async def _process_input(prompt):
             # clear the delayed messages
             current_agent_config._delayed_messages = []
 
-
+    # Mark that the user has had their first interaction
+    if not current_agent_config._has_had_first_interaction:
+        current_agent_config._has_had_first_interaction = True
 
     st.session_state.lock_widgets = False  # Step 5: Unlock the UI   
     st.rerun()
@@ -447,6 +466,7 @@ async def _render_suggested_questions():
         return
     
     # Check if user has hidden suggested questions via settings
+    # (auto-hide is handled in _render_sidebar before widgets are created)
     if not st.session_state.get("show_suggested_questions", True):
         return
     
