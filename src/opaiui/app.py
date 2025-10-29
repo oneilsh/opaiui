@@ -351,22 +351,6 @@ def ui_locked():
     return st.session_state.lock_widgets
 
 
-def add_suggested_question(question: str):
-    """Add a suggested question to the current agent's list. Can be called from agent tools."""
-    if not isinstance(question, str):
-        raise ValueError(f"Question must be a string, got {type(question)}")
-    
-    current_agent_config = _current_agent_config()
-    if not current_agent_config.enable_dynamic_suggested_questions:
-        st.session_state.logger.warning("Dynamic suggested questions are not enabled for this agent. Call ignored.")
-        return
-    
-    # Only add if not already asked and not already in the list
-    if question not in current_agent_config._asked_questions and question not in current_agent_config._current_suggested_questions:
-        current_agent_config._current_suggested_questions.append(question)
-        st.session_state.logger.info(f"Added suggested question: {question}")
-
-
 async def render_in_chat(render_func_name: str, render_args: dict, before_agent_response: bool = False):
     """Adds a DisplayMessage with a render function to the current agent's display messages."""
     # verifty that render_func_name is a string and render_args is a dict with string keys
@@ -668,15 +652,6 @@ def serve(config: AppConfig, agent_configs: Dict[str, AgentConfig]) -> None:
                 st.session_state.agent_configs[name]._current_suggested_questions = list(agent_config.suggested_questions)
             else:
                 st.session_state.agent_configs[name]._current_suggested_questions = []
-            
-            # Register dynamic suggested questions tool if enabled
-            if agent_config.enable_dynamic_suggested_questions:
-                # Create and register the tool with this agent
-                @agent_config.agent.tool
-                async def suggest_question_for_user(ctx: RunContext, question: str) -> str:
-                    """Add a suggested question button for the user to click. The question should be relevant to the current conversation context and help guide the user's next interaction."""
-                    add_suggested_question(question)
-                    return f"Suggested question added: '{question}'"
 
         # editable by widgets
         st.session_state.current_agent_name = list(agent_configs.keys())[0]  # Default to the first agent

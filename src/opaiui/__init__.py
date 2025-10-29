@@ -79,9 +79,6 @@ class AgentConfig(BaseModel):
     enable_suggested_questions: bool = Field(
         default=False, description="Whether to enable suggested question buttons in the UI."
     )
-    enable_dynamic_suggested_questions: bool = Field(
-        default=False, description="Whether to allow the agent to dynamically add suggested questions during conversation via tool calls."
-    )
     hide_suggested_questions_after_first_interaction: bool = Field(
         default=False, description="If True, suggested questions will be hidden after the user's first interaction. Useful for onboarding-only suggested questions. Note: user can still toggle them back on via Settings."
     )
@@ -91,7 +88,7 @@ class AgentConfig(BaseModel):
     _display_messages: List[DisplayMessage] = PrivateAttr(default_factory=list)
     _delayed_messages: List[DisplayMessage] = PrivateAttr(default_factory=list) # private attribute as temporary holding for rendering messages; they will be moved to _display_messages when the agent finishes running
     _asked_questions: set = PrivateAttr(default_factory=set) # tracks which suggested questions have been asked
-    _current_suggested_questions: List[str] = PrivateAttr(default_factory=list) # current list of suggested questions (can be modified dynamically)
+    _current_suggested_questions: List[str] = PrivateAttr(default_factory=list) # current list of suggested questions
     _has_had_first_interaction: bool = PrivateAttr(default=False) # tracks whether user has had their first interaction
     _auto_hide_performed: bool = PrivateAttr(default=False) # tracks whether we've already performed the auto-hide once
 
