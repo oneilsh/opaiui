@@ -468,6 +468,7 @@ async def _render_suggested_questions():
     if not available_questions:
         return
     
+    
     # Use st.pills for a naturally wrapped layout
     selected_question = st.pills(
         label = None,

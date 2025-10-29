@@ -7,8 +7,9 @@ Table of Contents:
    - [Basic Application](#basic-application)
    - [Sharing Sessions](#sharing-sessions)
    - [`deps` and State](#deps-and-state)
-   - [Updating the Status Display]($updating-the-status-display)
+   - [Updating the Status Display](#updating-the-status-display)
    - [Agent-based UI Component Rendering](#agent-based-ui-component-rendering)
+   - [Suggested Questions](#suggested-questions)
    - [Logging](#logging)
 4. [Changelog](#changelog)
 
@@ -277,6 +278,47 @@ async def embed_library(ctx: RunContext[Library]):
 
 ```
 
+
+### Suggested Questions
+
+Opaiui can display suggested questions as clickable pill-shaped buttons near the chat input, similar to OpenAI's web interface.
+
+To enable suggested questions, provide a list of questions in the `AgentConfig`:
+
+```python
+agent_configs = {
+    "My Agent": AgentConfig(
+        agent = my_agent,
+        suggested_questions = [
+            "What can you help me with?",
+            "Show me an example",
+            "How do I get started?"
+        ],
+        enable_suggested_questions = True
+    )
+}
+```
+
+When a user clicks a suggested question, it is submitted as a regular chat message and removed from the list (so it won't be displayed again).
+
+#### Auto-hide After First Interaction
+
+For onboarding-only use cases, you can automatically hide suggested questions after the user's first interaction:
+
+```python
+agent_configs = {
+    "Onboarding Agent": AgentConfig(
+        agent = my_agent,
+        suggested_questions = ["What can you do?", "Show me an example"],
+        enable_suggested_questions = True,
+        hide_suggested_questions_after_first_interaction = True  # Auto-hide
+    )
+}
+```
+
+The questions will disappear after the user sends their first message. Users can still manually toggle them back on via the Settings menu in the sidebar. The "Clear Chat" button resets everything to the initial state. *Usage note: hiding suggested questions after the 
+first message is an app-wide setting currently.*
+
 ### Agent-based UI Component Rendering
 
 Last but not least, opaiui allows for arbitrary rendering of UI components directly in the chat by agent tool call. Streamlit provides a wide range of easy-to-use UI [elements](https://docs.streamlit.io/develop/api-reference) and community-built [components](https://streamlit.io/components).
@@ -337,6 +379,7 @@ the agent has completed responding.
   <img src="assets/widget_render.png" width="85%" alt="Widget Rendering">
 </p>
 
+
 ### Logging
 
 Logging is handled as part of the streamlit session; the default logging level is set to `"INFO"`. You can access the logger
@@ -352,6 +395,7 @@ logger.info("Hello from opaiui")
 
 ## Changelog
 
+- 0.14.0: added suggested questions feature
 - 0.13.2: added `set_status()` for providing updates from tool calling
 - 0.12.2: bugfix in agent rendering functions
 - 0.12.0: accept `rendering_functions` in `AgentConfig`, deprecate usage in `AppConfig`
