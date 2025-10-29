@@ -471,7 +471,8 @@ async def _render_suggested_questions():
     
     # Use st.pills for a naturally wrapped layout
     selected_question = st.pills(
-        label = None,
+        label = "Suggested Questions:",
+        label_visibility="hidden",
         options=available_questions,
         selection_mode="single",
         default=None,

@@ -395,7 +395,7 @@ logger.info("Hello from opaiui")
 
 ## Changelog
 
-- 0.14.0: added suggested questions feature
+- 0.14.1: added suggested questions feature
 - 0.13.2: added `set_status()` for providing updates from tool calling
 - 0.12.2: bugfix in agent rendering functions
 - 0.12.0: accept `rendering_functions` in `AgentConfig`, deprecate usage in `AppConfig`
