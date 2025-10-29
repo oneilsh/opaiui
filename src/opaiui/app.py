@@ -35,6 +35,7 @@ from pydantic_ai.messages import (
     ToolReturnPart,
     RetryPromptPart,
 )
+from pydantic_ai import RunContext
 
 
 def current_deps():
@@ -55,6 +56,17 @@ async def _render_sidebar():
     with st.sidebar:
         agent_names = list(st.session_state.agent_configs.keys())
         
+        # Check if we need to auto-hide suggested questions (before any widgets are rendered)
+        # Only do this once - after that, respect the user's manual toggle
+        current_config = _current_agent_config()
+        if (current_config.enable_suggested_questions and 
+            current_config.hide_suggested_questions_after_first_interaction and 
+            current_config._has_had_first_interaction and
+            not current_config._auto_hide_performed):
+            # Auto-hide after first interaction - update before checkbox is created
+            # Only do this once
+            st.session_state.show_suggested_questions = False
+            current_config._auto_hide_performed = True
 
         ## First: teh dropdown of agent selections
         new_agent_name = st.selectbox(label = "Current Agent:",
@@ -122,6 +134,16 @@ async def _render_sidebar():
                     key="show_function_calls", 
                     disabled=st.session_state.lock_widgets,
                     help = "Show the tool calls made by the agent, including tool calls and their results.")
+            
+            # Show suggested questions toggle if the feature is enabled and there are questions
+            current_config = _current_agent_config()
+            has_questions = (current_config.enable_suggested_questions and 
+                           current_config._current_suggested_questions)
+            if has_questions:
+                st.checkbox("💡 Show suggested questions",
+                          key="show_suggested_questions",
+                          disabled=st.session_state.lock_widgets,
+                          help = "Show suggested question buttons to help guide your interaction.")
 
 
         st.markdown("---")
@@ -152,6 +174,19 @@ def _clear_chat_current_agent():
     current_agent_config._display_messages = []
     current_agent_config._history_messages = []
     current_agent_config._usage = Usage()
+    
+    # Reset suggested questions to initial state
+    current_agent_config._asked_questions = set()
+    current_agent_config._has_had_first_interaction = False
+    current_agent_config._auto_hide_performed = False  # Reset so auto-hide can happen again
+    if current_agent_config.suggested_questions is not None:
+        current_agent_config._current_suggested_questions = list(current_agent_config.suggested_questions)
+    else:
+        current_agent_config._current_suggested_questions = []
+    
+    # Re-enable suggested questions if they were auto-hidden after first interaction
+    if current_agent_config.hide_suggested_questions_after_first_interaction:
+        st.session_state.show_suggested_questions = True
 
     st.session_state.lock_widgets = False
 
@@ -298,7 +333,9 @@ async def _process_input(prompt):
             # clear the delayed messages
             current_agent_config._delayed_messages = []
 
-
+    # Mark that the user has had their first interaction
+    if not current_agent_config._has_had_first_interaction:
+        current_agent_config._has_had_first_interaction = True
 
     st.session_state.lock_widgets = False  # Step 5: Unlock the UI   
     st.rerun()
@@ -312,6 +349,7 @@ async def call_render_func(render_func_name: str, render_args: dict, before_agen
 def ui_locked():
     """Check if the app is currently processing an agent run. Useful for disabling UI elements during long-running operations."""
     return st.session_state.lock_widgets
+
 
 async def render_in_chat(render_func_name: str, render_args: dict, before_agent_response: bool = False):
     """Adds a DisplayMessage with a render function to the current agent's display messages."""
@@ -404,6 +442,53 @@ def _log_error(error_message: str):
         error_dialog()
 
 
+async def _render_suggested_questions():
+    """Render suggested question buttons if enabled using st.pills."""
+    current_agent_config = _current_agent_config()
+    
+    if not current_agent_config.enable_suggested_questions:
+        return
+    
+    # Check if user has hidden suggested questions via settings
+    # (auto-hide is handled in _render_sidebar before widgets are created)
+    if not st.session_state.get("show_suggested_questions", True):
+        return
+    
+    # Check if we have a pending question to process (from previous interaction)
+    if "pending_suggested_question" in st.session_state and st.session_state.pending_suggested_question is not None:
+        question_to_process = st.session_state.pending_suggested_question
+        st.session_state.pending_suggested_question = None
+        # Process it now (pills are already hidden)
+        await _process_input(question_to_process)
+        return
+    
+    # Get available questions (filter out already asked ones)
+    available_questions = [q for q in current_agent_config._current_suggested_questions if q not in current_agent_config._asked_questions]
+    
+    if not available_questions:
+        return
+    
+    
+    # Use st.pills for a naturally wrapped layout
+    selected_question = st.pills(
+        label = None,
+        options=available_questions,
+        selection_mode="single",
+        default=None,
+        disabled=st.session_state.lock_widgets,
+        key=f"suggested_pills_{st.session_state.current_agent_name}"
+    )
+    
+    # If a question was selected, mark it as asked and trigger rerun
+    if selected_question is not None:
+        # Mark this question as asked immediately
+        current_agent_config._asked_questions.add(selected_question)
+        # Store it for processing on next render (after pills are hidden)
+        st.session_state.pending_suggested_question = selected_question
+        # Trigger rerun to hide the pills before processing
+        st.rerun()
+
+
 async def _handle_chat_input():
     if prompt := st.chat_input(disabled=st.session_state.lock_widgets, on_submit=_lock_ui, key = "chat_input"):
         await _process_input(prompt)
@@ -422,6 +507,7 @@ def _share_session():
             "agent_configs": {name: config.serializable_dict() for name, config in st.session_state.agent_configs.items()},
             "current_agent_name": st.session_state.current_agent_name,
             "show_function_calls": st.session_state.show_function_calls,
+            "show_suggested_questions": st.session_state.show_suggested_questions,
             "sidebar_collapsed": st.session_state.app_config.sidebar_collapsed,
         }
 
@@ -482,6 +568,7 @@ def _rehydrate_state():
                 _log_error(f"Error closing Redis connection: {e}")
 
     st.session_state.show_function_calls = state_data["show_function_calls"]
+    st.session_state.show_suggested_questions = state_data.get("show_suggested_questions", True)  # Default to True for backwards compatibility
     st.session_state.app_config.sidebar_collapsed = state_data["sidebar_collapsed"] # this isn't actually respected by Streamlit...
     st.session_state.current_agent_name = state_data["current_agent_name"]
 
@@ -491,7 +578,10 @@ def _rehydrate_state():
         session_agent = st.session_state.agent_configs[name].agent
         session_sidebar_func = st.session_state.agent_configs[name].sidebar_func
         session_deps = st.session_state.agent_configs[name].deps
+        session_rendering_functions = st.session_state.agent_configs[name].rendering_functions
         agent_config = AgentConfig.from_serializable(config_data, agent=session_agent, sidebar_func=session_sidebar_func, deps=session_deps)
+        # Restore rendering_functions from session state (can't be serialized)
+        agent_config.rendering_functions = session_rendering_functions
         agent_configs[name] = agent_config
 
     # now we can replace the current session state agent configs
@@ -516,6 +606,8 @@ async def _main():
 
     for message in current_config._display_messages:
         await _render_message(message)
+
+    await _render_suggested_questions()
 
     await _handle_chat_input()
 
@@ -555,10 +647,17 @@ def serve(config: AppConfig, agent_configs: Dict[str, AgentConfig]) -> None:
                 st.session_state.agent_configs[name].rendering_functions = {func.__name__: func for func in agent_config.rendering_functions}
             else:
                 st.session_state.agent_configs[name].rendering_functions = {}
+            
+            # Initialize suggested questions from the config
+            if agent_config.suggested_questions is not None:
+                st.session_state.agent_configs[name]._current_suggested_questions = list(agent_config.suggested_questions)
+            else:
+                st.session_state.agent_configs[name]._current_suggested_questions = []
 
         # editable by widgets
         st.session_state.current_agent_name = list(agent_configs.keys())[0]  # Default to the first agent
         st.session_state.show_function_calls = config.show_function_calls
+        st.session_state.show_suggested_questions = True  # Default to showing suggested questions
 
         if "logger" not in st.session_state:
             _initialize_logger()
@@ -568,6 +667,7 @@ def serve(config: AppConfig, agent_configs: Dict[str, AgentConfig]) -> None:
             st.session_state.logger.warning("AppConfig.rendering_functions is deprecated. Use AgentConfig.rendering_functions instead. This will be removed in a future version.")
 
         st.session_state.lock_widgets = False
+        st.session_state.pending_suggested_question = None
 
         sidebar_state = "auto"
         if config.sidebar_collapsed is not None:
