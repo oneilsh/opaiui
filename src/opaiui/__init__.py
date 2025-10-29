@@ -73,10 +73,22 @@ class AgentConfig(BaseModel):
         default_factory=list, description="List of async functions which may be called from agent tools using `render_in_chat`. These functions should be defined with `async def` and can be used to render custom components in the chat."
     )
 
+    suggested_questions: Optional[List[str]] = Field(
+        default=None, description="Initial list of suggested questions to display as clickable buttons near the chat input."
+    )
+    enable_suggested_questions: bool = Field(
+        default=False, description="Whether to enable suggested question buttons in the UI."
+    )
+    enable_dynamic_suggested_questions: bool = Field(
+        default=False, description="Whether to allow the agent to dynamically add suggested questions during conversation via tool calls."
+    )
+
     _usage: Usage = PrivateAttr(default_factory=Usage)
     _history_messages: List[ModelMessage] = PrivateAttr(default_factory=list)
     _display_messages: List[DisplayMessage] = PrivateAttr(default_factory=list)
     _delayed_messages: List[DisplayMessage] = PrivateAttr(default_factory=list) # private attribute as temporary holding for rendering messages; they will be moved to _display_messages when the agent finishes running
+    _asked_questions: set = PrivateAttr(default_factory=set) # tracks which suggested questions have been asked
+    _current_suggested_questions: List[str] = PrivateAttr(default_factory=list) # current list of suggested questions (can be modified dynamically)
 
 
     model_config = ConfigDict(
@@ -92,10 +104,12 @@ class AgentConfig(BaseModel):
         return v
 
     def serializable_dict(self):
-        base = self.model_dump(exclude={"agent", "sidebar_func", "deps"}) # private attributes are not included by default
+        base = self.model_dump(exclude={"agent", "sidebar_func", "deps", "rendering_functions"}) # private attributes are not included by default; exclude rendering_functions since functions can't be serialized
         base["_usage"] = base64.b64encode(dill.dumps(self._usage)).decode("utf-8") if self._usage else None
         base["_history_messages"] = base64.b64encode(dill.dumps(self._history_messages)).decode("utf-8") if self._history_messages else None
         base["_display_messages"] = base64.b64encode(dill.dumps(self._display_messages)).decode("utf-8") if self._display_messages else None
+        base["_asked_questions"] = list(self._asked_questions) # convert set to list for JSON serialization
+        base["_current_suggested_questions"] = self._current_suggested_questions
         # if there's a deps.state, try to serialize it
         if self.deps is not None and hasattr(self.deps, "state"):
             base["deps_state"] = base64.b64encode(dill.dumps(self.deps.state)).decode("utf-8")
@@ -120,12 +134,20 @@ class AgentConfig(BaseModel):
         if "_display_messages" in data and data["_display_messages"] is not None:
             display_messages = dill.loads(base64.b64decode(data["_display_messages"]))
 
+        asked_questions = set()
+        if "_asked_questions" in data and data["_asked_questions"] is not None:
+            asked_questions = set(data["_asked_questions"]) # convert list back to set
+        
+        current_suggested_questions = []
+        if "_current_suggested_questions" in data and data["_current_suggested_questions"] is not None:
+            current_suggested_questions = data["_current_suggested_questions"]
+
         deps_state = None
         if "deps_state" in data and data["deps_state"] is not None:
             deps_state = dill.loads(base64.b64decode(data["deps_state"]))
         # Remove runtime-only keys from data before constructing
-        data = {k: v for k, v in data.items() if k not in ("agent", "sidebar_func", "deps", "_display_messages")}
-        obj = cls(**data)
+        data = {k: v for k, v in data.items() if k not in ("agent", "sidebar_func", "deps", "rendering_functions", "_display_messages", "_asked_questions", "_current_suggested_questions")}
+        obj = cls(**data, rendering_functions=[])  # Initialize with empty list, will be restored from session state
         obj.agent = agent
         obj.deps = deps
         obj.sidebar_func = sidebar_func
@@ -134,6 +156,8 @@ class AgentConfig(BaseModel):
         obj._usage = usage
         obj._history_messages = history_messages
         obj._display_messages = display_messages
+        obj._asked_questions = asked_questions
+        obj._current_suggested_questions = current_suggested_questions
         return obj
 
     # sidebar_func must be a callable and async (coroutine)
