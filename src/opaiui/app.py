@@ -176,7 +176,6 @@ def _clear_chat_current_agent():
     current_agent_config._usage = Usage()
     
     # Reset suggested questions to initial state
-    current_agent_config._asked_questions = set()
     current_agent_config._has_had_first_interaction = False
     current_agent_config._auto_hide_performed = False  # Reset so auto-hide can happen again
     if current_agent_config.suggested_questions is not None:
@@ -351,6 +350,36 @@ def ui_locked():
     return st.session_state.lock_widgets
 
 
+def get_suggested_questions() -> List[str]:
+    """Get the current list of suggested questions for the active agent.
+    
+    Returns:
+        List of current suggested questions. Returns a copy to prevent accidental modification.
+    """
+    current_agent_config = _current_agent_config()
+    return list(current_agent_config._current_suggested_questions)
+
+
+def set_suggested_questions(questions: List[str]):
+    """Set the suggested questions for the active agent.
+    
+    Args:
+        questions: List of question strings to set as suggested questions.
+        
+    Raises:
+        ValueError: If questions is not a list or contains non-string items.
+    """
+    if not isinstance(questions, list):
+        raise ValueError(f"questions must be a list, got {type(questions)}")
+    
+    if not all(isinstance(q, str) for q in questions):
+        raise ValueError("All questions must be strings")
+    
+    current_agent_config = _current_agent_config()
+    current_agent_config._current_suggested_questions = list(questions)
+    st.session_state.logger.info(f"Updated suggested questions: {len(questions)} questions set")
+
+
 async def render_in_chat(render_func_name: str, render_args: dict, before_agent_response: bool = False):
     """Adds a DisplayMessage with a render function to the current agent's display messages."""
     # verifty that render_func_name is a string and render_args is a dict with string keys
@@ -463,8 +492,8 @@ async def _render_suggested_questions():
         await _process_input(question_to_process)
         return
     
-    # Get available questions (filter out already asked ones)
-    available_questions = [q for q in current_agent_config._current_suggested_questions if q not in current_agent_config._asked_questions]
+    # Get current questions (no permanent filtering - questions can be reused)
+    available_questions = current_agent_config._current_suggested_questions
     
     if not available_questions:
         return
@@ -481,10 +510,10 @@ async def _render_suggested_questions():
         key=f"suggested_pills_{st.session_state.current_agent_name}"
     )
     
-    # If a question was selected, mark it as asked and trigger rerun
+    # If a question was selected, remove it from the list and trigger rerun
     if selected_question is not None:
-        # Mark this question as asked immediately
-        current_agent_config._asked_questions.add(selected_question)
+        # Remove this question from the current list (but don't track it permanently)
+        current_agent_config._current_suggested_questions = [q for q in current_agent_config._current_suggested_questions if q != selected_question]
         # Store it for processing on next render (after pills are hidden)
         st.session_state.pending_suggested_question = selected_question
         # Trigger rerun to hide the pills before processing

@@ -84,7 +84,6 @@ class AgentConfig(BaseModel):
     _history_messages: List[ModelMessage] = PrivateAttr(default_factory=list)
     _display_messages: List[DisplayMessage] = PrivateAttr(default_factory=list)
     _delayed_messages: List[DisplayMessage] = PrivateAttr(default_factory=list) # private attribute as temporary holding for rendering messages; they will be moved to _display_messages when the agent finishes running
-    _asked_questions: set = PrivateAttr(default_factory=set) # tracks which suggested questions have been asked
     _current_suggested_questions: List[str] = PrivateAttr(default_factory=list) # current list of suggested questions
     _has_had_first_interaction: bool = PrivateAttr(default=False) # tracks whether user has had their first interaction
     _auto_hide_performed: bool = PrivateAttr(default=False) # tracks whether we've already performed the auto-hide once
@@ -107,7 +106,6 @@ class AgentConfig(BaseModel):
         base["_usage"] = base64.b64encode(dill.dumps(self._usage)).decode("utf-8") if self._usage else None
         base["_history_messages"] = base64.b64encode(dill.dumps(self._history_messages)).decode("utf-8") if self._history_messages else None
         base["_display_messages"] = base64.b64encode(dill.dumps(self._display_messages)).decode("utf-8") if self._display_messages else None
-        base["_asked_questions"] = list(self._asked_questions) # convert set to list for JSON serialization
         base["_current_suggested_questions"] = self._current_suggested_questions
         base["_has_had_first_interaction"] = self._has_had_first_interaction
         base["_auto_hide_performed"] = self._auto_hide_performed
@@ -134,10 +132,6 @@ class AgentConfig(BaseModel):
         display_messages = []
         if "_display_messages" in data and data["_display_messages"] is not None:
             display_messages = dill.loads(base64.b64decode(data["_display_messages"]))
-
-        asked_questions = set()
-        if "_asked_questions" in data and data["_asked_questions"] is not None:
-            asked_questions = set(data["_asked_questions"]) # convert list back to set
         
         current_suggested_questions = []
         if "_current_suggested_questions" in data and data["_current_suggested_questions"] is not None:
@@ -155,7 +149,7 @@ class AgentConfig(BaseModel):
         if "deps_state" in data and data["deps_state"] is not None:
             deps_state = dill.loads(base64.b64decode(data["deps_state"]))
         # Remove runtime-only keys from data before constructing
-        data = {k: v for k, v in data.items() if k not in ("agent", "sidebar_func", "deps", "rendering_functions", "_display_messages", "_asked_questions", "_current_suggested_questions", "_has_had_first_interaction", "_auto_hide_performed")}
+        data = {k: v for k, v in data.items() if k not in ("agent", "sidebar_func", "deps", "rendering_functions", "_display_messages", "_current_suggested_questions", "_has_had_first_interaction", "_auto_hide_performed")}
         obj = cls(**data, rendering_functions=[])  # Initialize with empty list, will be restored from session state
         obj.agent = agent
         obj.deps = deps
@@ -165,7 +159,6 @@ class AgentConfig(BaseModel):
         obj._usage = usage
         obj._history_messages = history_messages
         obj._display_messages = display_messages
-        obj._asked_questions = asked_questions
         obj._current_suggested_questions = current_suggested_questions
         obj._has_had_first_interaction = has_had_first_interaction
         obj._auto_hide_performed = auto_hide_performed

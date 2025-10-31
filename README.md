@@ -298,7 +298,7 @@ agent_configs = {
 }
 ```
 
-When a user clicks a suggested question, it is submitted as a regular chat message and removed from the list (so it won't be displayed again).
+When a user clicks a suggested question, it is submitted as a regular chat message and removed from the current list. However, the question can be added back later (via `set_suggested_questions()`) and used again, making the feature flexible for dynamic workflows.
 
 #### Auto-hide After First Interaction
 
@@ -314,8 +314,29 @@ agent_configs = {
 }
 ```
 
-The questions will disappear after the user sends their first message. Users can still manually toggle them back on via the Settings menu in the sidebar. The "Clear Chat" button resets everything to the initial state. *Usage note: hiding suggested questions after the 
-first message is an app-wide setting currently.*
+The questions will disappear after the user sends their first message. Users can still manually toggle them back on via the Settings menu in the sidebar. The "Clear Chat" button resets everything to the initial state.
+
+#### Programmatic Access
+
+For dynamic control, you can get and set suggested questions from within agent tools:
+
+```python
+from opaiui.app import get_suggested_questions, set_suggested_questions
+
+@my_agent.tool
+async def update_questions(ctx: RunContext):
+    """Update suggested questions based on context."""
+    # Get current questions
+    current = get_suggested_questions()
+    
+    # Set new questions
+    new_questions = ["New question 1", "New question 2"]
+    set_suggested_questions(new_questions)
+    
+    return "Updated suggested questions"
+```
+
+This allows agents to dynamically adapt suggested questions based on conversation context or application state.
 
 ### Agent-based UI Component Rendering
 
@@ -393,7 +414,7 @@ logger.info("Hello from opaiui")
 
 ## Changelog
 
-- 0.14.2: added suggested questions feature
+- 0.14.3: added suggested questions feature
 - 0.13.2: added `set_status()` for providing updates from tool calling
 - 0.12.2: bugfix in agent rendering functions
 - 0.12.0: accept `rendering_functions` in `AgentConfig`, deprecate usage in `AppConfig`
