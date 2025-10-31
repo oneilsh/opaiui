@@ -293,8 +293,7 @@ agent_configs = {
             "What can you help me with?",
             "Show me an example",
             "How do I get started?"
-        ],
-        enable_suggested_questions = True
+        ]
     )
 }
 ```
@@ -310,7 +309,6 @@ agent_configs = {
     "Onboarding Agent": AgentConfig(
         agent = my_agent,
         suggested_questions = ["What can you do?", "Show me an example"],
-        enable_suggested_questions = True,
         hide_suggested_questions_after_first_interaction = True  # Auto-hide
     )
 }
@@ -395,7 +393,7 @@ logger.info("Hello from opaiui")
 
 ## Changelog
 
-- 0.14.1: added suggested questions feature
+- 0.14.2: added suggested questions feature
 - 0.13.2: added `set_status()` for providing updates from tool calling
 - 0.12.2: bugfix in agent rendering functions
 - 0.12.0: accept `rendering_functions` in `AgentConfig`, deprecate usage in `AppConfig`

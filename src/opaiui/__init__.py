@@ -74,10 +74,7 @@ class AgentConfig(BaseModel):
     )
 
     suggested_questions: Optional[List[str]] = Field(
-        default=None, description="Initial list of suggested questions to display as clickable buttons near the chat input."
-    )
-    enable_suggested_questions: bool = Field(
-        default=False, description="Whether to enable suggested question buttons in the UI."
+        default=None, description="List of suggested questions to display as clickable buttons near the chat input. If provided, enables the suggested questions feature."
     )
     hide_suggested_questions_after_first_interaction: bool = Field(
         default=False, description="If True, suggested questions will be hidden after the user's first interaction. Useful for onboarding-only suggested questions. Note: user can still toggle them back on via Settings."

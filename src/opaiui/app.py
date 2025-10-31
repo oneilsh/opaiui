@@ -59,7 +59,7 @@ async def _render_sidebar():
         # Check if we need to auto-hide suggested questions (before any widgets are rendered)
         # Only do this once - after that, respect the user's manual toggle
         current_config = _current_agent_config()
-        if (current_config.enable_suggested_questions and 
+        if (current_config.suggested_questions and 
             current_config.hide_suggested_questions_after_first_interaction and 
             current_config._has_had_first_interaction and
             not current_config._auto_hide_performed):
@@ -135,9 +135,9 @@ async def _render_sidebar():
                     disabled=st.session_state.lock_widgets,
                     help = "Show the tool calls made by the agent, including tool calls and their results.")
             
-            # Show suggested questions toggle if the feature is enabled and there are questions
+            # Show suggested questions toggle if there are questions configured
             current_config = _current_agent_config()
-            has_questions = (current_config.enable_suggested_questions and 
+            has_questions = (current_config.suggested_questions and 
                            current_config._current_suggested_questions)
             if has_questions:
                 st.checkbox("💡 Show suggested questions",
@@ -443,10 +443,11 @@ def _log_error(error_message: str):
 
 
 async def _render_suggested_questions():
-    """Render suggested question buttons if enabled using st.pills."""
+    """Render suggested question buttons if configured using st.pills."""
     current_agent_config = _current_agent_config()
     
-    if not current_agent_config.enable_suggested_questions:
+    # Only render if there are suggested questions configured
+    if not current_agent_config.suggested_questions:
         return
     
     # Check if user has hidden suggested questions via settings
